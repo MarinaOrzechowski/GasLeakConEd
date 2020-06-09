@@ -27,7 +27,7 @@ import requests
 # Parse the HTML data
 from bs4 import BeautifulSoup
 # Sceduler. Will run a function every x seconds/minutes/hours
-from apscheduler.schedulers.blocking import BlockingScheduler
+#from apscheduler.schedulers.blocking import BlockingScheduler
 # (GitPython) To push changes to gh
 from git import Repo
 
@@ -392,7 +392,7 @@ def WebscraperJsonToCSV():
     global scrapingCount
     global csvReadCount
     scrapingCount = scrapingCount + 1
-    scheduler.pause()  # *****pausing the sceduler
+    # scheduler.pause()  # *****pausing the sceduler
 
     # 1) GET JSON DATA: Webscrape the html response which is usually just the JSON data from the url and add to the JSON Dataframe:
     # jsonDF = pd.read_json(jsonFile, orient='records')                                                             # If im getting data from json file, comment out the rest of this section.
@@ -414,7 +414,7 @@ def WebscraperJsonToCSV():
               "       Reports Scraped: "+str(len(jsonDF)))
     except:
         print("         Couldnt get the json data so will re-run function. This is Run " + str(scrapingCount))
-        scheduler.resume()  # ****resuming the job
+        # scheduler.resume()  # ****resuming the job
         return WebscraperJsonToCSV()
 
     # 2) MODIFY CSV FILE:
@@ -450,7 +450,7 @@ def WebscraperJsonToCSV():
             return
         print("     ...Couldnt read file so will re-run function...")
         print("    Error Code: "+str(e))
-        scheduler.resume()  # ****resuming the job
+        # scheduler.resume()  # ****resuming the job
         return WebscraperJsonToCSV()
         return
     csvReadCount = 0
@@ -468,7 +468,7 @@ def WebscraperJsonToCSV():
     newTicketDF = pd.DataFrame(columns=csvHeader)
     # No new Tickets, can end this iteration
     if len(newTicketsArray) == 0:
-        scheduler.resume()  # ****resuming the job
+        # scheduler.resume()  # ****resuming the job
         return
     # Going through the array of new ticket number and adding only their rows to th new data frame
     for row in range(0, len(newTicketsArray)):
@@ -512,14 +512,14 @@ def WebscraperJsonToCSV():
     turnTickeyHistory_toHourlyReport()
     turnTickeyHistory_toMonthlyReport()
     git_push()
-    scheduler.resume()  # ****resuming the job
+    # scheduler.resume()  # ****resuming the job
 
 
 # 8) RESCAN FOR TICKETS every x time using sceduler
-scheduler = BlockingScheduler()
+#scheduler = BlockingScheduler()
 # need to give enough time to go the entire process
-scheduler.add_job(WebscraperJsonToCSV, 'interval', minutes=30)
-scheduler.start()
-
+#scheduler.add_job(WebscraperJsonToCSV, 'interval', minutes=30)
+# scheduler.start()
+WebscraperJsonToCSV()
 
 # Notes: Turning the Gas Leak Report data into hourly reports...) process took forever, need to make it do it faster
