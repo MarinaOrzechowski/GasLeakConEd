@@ -4,8 +4,11 @@ import dash_html_components as html
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
-from itertools import combinations
 
+import os
+
+from itertools import combinations
+from sklearn.decomposition import PCA as sklearnPCA
 from scipy.stats import pearsonr, spearmanr
 import numpy as np
 import pandas as pd
@@ -22,9 +25,9 @@ mapbox_access_token = 'pk.eyJ1IjoibWlzaGtpY2UiLCJhIjoiY2s5MG94bWRoMDQxdjNmcHI1aW
 mapbox_style = "mapbox://styles/mishkice/ckbjhq6w50hlc1io4cnqg7svc"
 
 # Load data
-
-df = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\data_with_centroids_updated.csv')
+dir_path = os.path.dirname(os.path.realpath(__file__))
+df = pd.read_csv(dir_path + '\data\data_with_centroids_updated.csv')
+# r'C:\Users\mskac\machineLearning\GasLeakConEd\data\data_with_centroids_updated.csv')
 
 # bins
 BINS = [
@@ -62,13 +65,13 @@ colors = {
 # function to assign colors to markers by boroughs
 
 
-def find_colorscale_by_boro(df):
+'''def find_colorscale_by_boro(df):
     color_by_boro = ['#6a2c70' if row['boro_name'] == 'manhattan' else '#b83b5e' if row['boro_name'] == 'brooklyn' else '#f08a5d' if row['boro_name'] ==
                      'queens' else '#f9ed69' if row['boro_name'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
     return color_by_boro
 
 
-colorscale_by_boro = ['#6a2c70', '#b83b5e', '#f08a5d', '#f9ed69', '#3ec1d3']
+colorscale_by_boro = ['#6a2c70', '#b83b5e', '#f08a5d', '#f9ed69', '#3ec1d3']'''
 
 
 # page layout
@@ -78,7 +81,7 @@ app.layout = html.Div(
         # row with the header
         html.Div([
             html.H1(
-                children='NYC Trees & Properties ',
+                children='NYC Gas Leaks Information',
                 style={
                     'textAlign': 'center',
                     'color': colors['text'],
@@ -87,7 +90,7 @@ app.layout = html.Div(
                 })
         ], className='row'),
 
-        # row with the dropdowns
+        # row 1 with the dropdowns
         html.Div([
             # dropdown to choose neighborhoods
             html.Div([
@@ -115,7 +118,7 @@ app.layout = html.Div(
                         },
                         {
                             "label": "Unemployment Rate",
-                            "value": "unemplrate",
+                            "value": "unemploymentrate",
                         },
                         {
                             "label": "Number of crimes per person",
@@ -127,16 +130,51 @@ app.layout = html.Div(
                         },
                     ],
                     value=['gas_leaks_person',
-                           'crimes_person', 'povertyrate'],
+                           'unemploymentrate', 'povertyrate'],
                     multi=True,
                     placeholder="Select attributes",
-                    style={'display': 'inline-block'},
+                    style={'display': 'inline-block', 'width': '100%'},
                 )
             ],
                 className='six columns',
-                style={'display': 'inline-block'})
+                style={'display': 'inline-block'}),
+
         ],
             className='row'),
+
+        html.Div([
+
+            # dropdown to choose type of graph
+            html.Div([
+                dcc.Dropdown(
+                    id="dropdownGraph",
+                    options=[
+                        {
+                            "label": "Scatter matrix (pairwise comparison)",
+                            "value": "scatter",
+                        },
+                        {
+                            "label": "PCA",
+                            "value": "pca",
+                        },
+                        {
+                            "label": "ISOMAP",
+                            "value": "isomap",
+                        }
+                    ],
+                    value='scatter',
+                    multi=False,
+                    placeholder="Select type of graph",
+                    style={'width': '100%'},
+                )
+            ],
+                className='six columns',
+                style={'float': 'right'}
+            )
+
+        ],
+            className='row'),
+
 
         # row with a map and a matrix
         html.Div([
@@ -192,13 +230,13 @@ app.layout = html.Div(
 # map callback
 ######################################################################################################################
 
-
 @ app.callback(
     Output("mapGraph", "figure"),
     [Input("dropdownNta", "value")],
     [State("mapGraph", "figure")],
 )
 def display_map(choiceMap, figure):
+
     annotations = [
         dict(
             showarrow=False,
@@ -289,6 +327,30 @@ def display_map(choiceMap, figure):
     return fig
 
 ######################################################################################################################
+# callbacks to reset dropdown/map selection
+######################################################################################################################
+
+
+@app.callback(
+    Output('dropdownNta', 'value'),
+    [
+        Input('mapGraph', 'selectedData')
+    ])
+def reset_dropdown_selected(selectedAreaMap):
+    if selectedAreaMap is not None:
+        return None
+
+
+'''@app.callback(
+    Output('mapGraph', 'selectedData'),
+    [
+        Input('dropdownNta', 'value')
+    ])
+def reset_map_selected(selectedDropdown):
+    if selectedDropdown is not None:
+        return None
+'''
+######################################################################################################################
 # scattermatrix callback
 ######################################################################################################################
 
@@ -302,6 +364,7 @@ def display_map(choiceMap, figure):
     ])
 def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
 
+    num_of_attributes = len(selectedAttr)
     df_selected = df
     title_part = ' census tracks'
     key = 'geoid'
@@ -311,7 +374,10 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
         color=colors['text']
     )
 
-    if selectedAreaMap is not None:
+    if selectedAreaDropdown is not None:
+        df_selected = df_selected[df_selected['ntaname'].isin(
+            selectedAreaDropdown)]
+    elif selectedAreaMap is not None:
         points = selectedAreaMap["points"]
         area_names = [str(point["text"].split("<br>")[2])
                       for point in points]
@@ -321,7 +387,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
     coef_list = []
 
     # find pearson coeff and p_value for each pair of attributes
-    pairs = combinations(selectedAttr, 2)
+    '''pairs = combinations(selectedAttr, 2)
     flag = True
     for pair in pairs:
         if len(df_selected[pair[0]]) >= 2 and len(df_selected[pair[1]]) >= 2:
@@ -330,6 +396,36 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
         else:
             flag = False
     if flag:
+        comb = [x for x in combinations(
+            [i+1 for i in range(num_of_attributes)], 2)]
+        ann = []
+        for i in range(num_of_attributes):
+            ann.append(
+                dict(
+                    x=1,
+                    y=1,
+                    xref="x"+str(comb[i][0]),
+                    yref="y"+str(comb[i][0]),
+                    font=font_ann,
+                    text="PCC: " +
+                    str(round(coef_list[i][0], 2)) + "<br>p: " +
+                    ('{:0.1e}'.format(coef_list[i][1])),
+                    showarrow=False
+                )
+            )
+            ann.append(
+                dict(
+                    x=1,
+                    y=1,
+                    xref="x"+str(comb[i][0]),
+                    yref="y"+str(comb[i][0]),
+                    font=font_ann,
+                    text="PCC: " +
+                    str(round(coef_list[i][0], 2)) + "<br>p: " +
+                    ('{:0.1e}'.format(coef_list[i][1])),
+                    showarrow=False
+                )
+            )
         ann = [
             dict(
                 x=1,
@@ -401,7 +497,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
 
         ]
     else:
-        ann = []
+        ann = []'''
 
     axisd = dict(showline=True,
                  zeroline=False,
@@ -425,21 +521,18 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
         yaxis1=dict(axisd),
         yaxis2=dict(axisd),
         yaxis3=dict(axisd),
-        yaxis4=dict(axisd),
-        annotations=ann)
+        yaxis4=dict(axisd))
+    # annotations=ann)
 
     fig = go.Figure(data=go.Splom(
-        dimensions=[dict(label=selectedAttr[0],
-                         values=df_selected[selectedAttr[0]]),
-                    dict(label=selectedAttr[1],
-                         values=df_selected[selectedAttr[1]]),
-                    dict(label=selectedAttr[2],
-                         values=df_selected[selectedAttr[2]]),
+        dimensions=[dict(label=selectedAttr[i],
+                         values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
                     ],
         text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
         hoverinfo="x+y+text",
         # showlegend=True,
-        marker=dict(color=index_vals,
+        marker=dict(colorscale='Viridis',
+                    color=index_vals,
                     showscale=False,  # colors encode categorical variables
                     line_color='black', line_width=0.4),
         diagonal=dict(visible=True)
