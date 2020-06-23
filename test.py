@@ -156,7 +156,7 @@ app.layout = html.Div(
                                     lon=-73.91251
                                 ),
                                 pitch=0,
-                                zoom=11,
+                                zoom=10,
                             ),
                             autosize=False,
                         ),
