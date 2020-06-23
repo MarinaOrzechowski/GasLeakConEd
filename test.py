@@ -216,7 +216,11 @@ app.layout = html.Div(
             className='row'),
 
         # row with parallel coordinates
-        html.Div([],
+        html.Div([
+            dcc.Graph(
+                    id='para_coor'
+            )
+        ],
                  className='row'),
 
     ],
@@ -356,7 +360,10 @@ def reset_map_selected(selectedDropdown):
 
 
 @app.callback(
-    Output('scatter_matrix', 'figure'),
+    [
+        Output('scatter_matrix', 'figure'),
+        Output('para_coor', 'figure')
+    ],
     [
         Input('mapGraph', 'selectedData'),
         Input('dropdownNta', 'value'),
@@ -524,6 +531,13 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
         yaxis4=dict(axisd))
     # annotations=ann)
 
+    arr = [str(r) for r in selectedAttr]
+    para=px.parallel_coordinates(df_selected, color="geoid",
+                              dimensions= arr,
+                              color_continuous_scale=px.colors.diverging.Tealrose,
+                              color_continuous_midpoint=2
+                              )
+
     fig = go.Figure(data=go.Splom(
         dimensions=[dict(label=selectedAttr[i],
                          values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
@@ -539,7 +553,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
     ), layout=layout
     )
 
-    return fig
+    return fig, para
 
 
 if __name__ == '__main__':
