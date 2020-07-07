@@ -8,7 +8,9 @@ from dash.dependencies import Input, Output, State
 import os
 
 from itertools import combinations
-from sklearn.decomposition import PCA as sklearnPCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn import manifold
 from scipy.stats import pearsonr, spearmanr
 import numpy as np
 import pandas as pd
@@ -69,8 +71,6 @@ colors = {
     color_by_boro = ['#6a2c70' if row['boro_name'] == 'manhattan' else '#b83b5e' if row['boro_name'] == 'brooklyn' else '#f08a5d' if row['boro_name'] ==
                      'queens' else '#f9ed69' if row['boro_name'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
     return color_by_boro
-
-
 colorscale_by_boro = ['#6a2c70', '#b83b5e', '#f08a5d', '#f9ed69', '#3ec1d3']'''
 
 
@@ -216,8 +216,12 @@ app.layout = html.Div(
             className='row'),
 
         # row with parallel coordinates
-        html.Div([],
-                 className='row'),
+        html.Div([
+            dcc.Graph(
+                id='para_coor'
+            )
+        ],
+            className='row'),
 
     ],
         style={'backgroundColor': colors['background']})
@@ -356,13 +360,17 @@ def reset_map_selected(selectedDropdown):
 
 
 @app.callback(
-    Output('scatter_matrix', 'figure'),
+    [
+        Output('scatter_matrix', 'figure'),
+        Output('para_coor', 'figure')
+    ],
     [
         Input('mapGraph', 'selectedData'),
         Input('dropdownNta', 'value'),
-        Input('dropdownAttr', 'value')
+        Input('dropdownAttr', 'value'),
+        Input('dropdownGraph', 'value')
     ])
-def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
+def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, selectedGraph):
 
     num_of_attributes = len(selectedAttr)
     df_selected = df
@@ -437,7 +445,6 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
                 str(round(coef_list[0][0], 2)) + "<br>p: " +
                 ('{:0.1e}'.format(coef_list[0][1])),
                 showarrow=False,
-
             ),
             dict(
                 x=1,
@@ -494,7 +501,6 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
                 ('{:0.1e}'.format(coef_list[2][1])),
                 showarrow=False,
             ),
-
         ]
     else:
         ann = []'''
@@ -524,22 +530,113 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr):
         yaxis4=dict(axisd))
     # annotations=ann)
 
-    fig = go.Figure(data=go.Splom(
-        dimensions=[dict(label=selectedAttr[i],
-                         values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
-                    ],
-        text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
-        hoverinfo="x+y+text",
-        # showlegend=True,
-        marker=dict(colorscale='Viridis',
-                    color=index_vals,
-                    showscale=False,  # colors encode categorical variables
-                    line_color='black', line_width=0.4),
-        diagonal=dict(visible=True)
-    ), layout=layout
-    )
+    arr = [str(r) for r in selectedAttr]
+    para = px.parallel_coordinates(df_selected, color="geoid",
+                                   dimensions=arr,
+                                   color_continuous_scale=px.colors.diverging.Tealrose,
+                                   color_continuous_midpoint=2
+                                   )
 
-    return fig
+    if selectedGraph == 'scatter':
+        fig = go.Figure(data=go.Splom(
+            dimensions=[dict(label=selectedAttr[i],
+                             values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
+                        ],
+            text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
+            hoverinfo="x+y+text",
+            # showlegend=True,
+            marker=dict(colorscale='Viridis',
+                        color=index_vals,
+                        showscale=False,  # colors encode categorical variables
+                        line_color='black', line_width=0.4),
+            diagonal=dict(visible=True)
+        ), layout=layout
+        )
+
+    elif selectedGraph == 'pca':
+        # temp
+        fig = go.Figure(data=go.Splom(
+            dimensions=[dict(label=selectedAttr[i],
+                             values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
+                        ],
+            text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
+            hoverinfo="x+y+text",
+            # showlegend=True,
+            marker=dict(colorscale='Viridis',
+                        color=index_vals,
+                        showscale=False,  # colors encode categorical variables
+                        line_color='black', line_width=0.4),
+            diagonal=dict(visible=True)
+        ), layout=layout
+        )
+        '''# normalize data
+        df_scaled = df_selected.drop(
+            ['hover', 'centerLong', 'centerLat'], axis=1)
+        df_scaled['ntaname'] = df_scaled['ntaname'].astype(
+            'category').cat.codes
+        df_scaled['boro_name'] = df_scaled['boro_name'].astype(
+            'category').cat.codes
+        cols = df_scaled.columns
+        df_scaled = StandardScaler().fit_transform(df_scaled)
+        df_normalized = pd.DataFrame(df_scaled, columns=cols)
+
+        pca = PCA(n_components=2, svd_solver='full')
+        pca.fit(df_normalized)
+        T = pca.transform(df_normalized)
+        print(T.shape)
+        print(pca.explained_variance_ratio_)'''
+
+        # Need to inish this !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # project the data to two-dimensional principal components
+
+    elif selectedGraph == 'isomap':
+        print()
+        # temp
+        fig = go.Figure(data=go.Splom(
+            dimensions=[dict(label=selectedAttr[i],
+                             values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
+                        ],
+            text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
+            hoverinfo="x+y+text",
+            # showlegend=True,
+            marker=dict(colorscale='Viridis',
+                        color=index_vals,
+                        showscale=False,  # colors encode categorical variables
+                        line_color='black', line_width=0.4),
+            diagonal=dict(visible=True)
+        ), layout=layout
+        )
+        '''# normalize data
+        df_scaled = df_selected.drop(
+            ['hover', 'centerLong', 'centerLat'], axis=1)
+        df_scaled['ntaname'] = df_scaled['ntaname'].astype(
+            'category').cat.codes
+        df_scaled['boro_name'] = df_scaled['boro_name'].astype(
+            'category').cat.codes
+        cols = df_scaled.columns
+        df_scaled = StandardScaler().fit_transform(df_scaled)
+        df_normalized = pd.DataFrame(df_scaled, columns=cols)
+
+        iso = manifold.Isomap(n_neighbors=10, n_components=2)
+        iso.fit(df_normalized)
+        manifold_2Da = iso.transform(df_normalized)
+        manifold_2D = pd.DataFrame(manifold_2Da, columns=[
+                                   'Component1', 'Component2'])
+        mp1 = manifold_2D.Component1.values
+        comp2 = manifold_2D.Component2.values
+        manifold_2D["Geoid"] = df_selected.geoid.values
+        color = df_selected.boro_name.values
+        colormap = np.array(['r',    'g',    'b',  'yellow', 'purple'])
+        boro = np.array(['Bronx', 'Staten Island',
+                         'Brooklyn', 'Manhatton', 'Queens'])
+        # 360050,360850,360470,360471,360610,360810
+
+        #plt.scatter(comp1,comp2, c = colormap[color],alpha = 0.6)
+
+        fig = px.scatter(manifold_2D, x="Component1", y="Component2",
+                         color=boro[color], hover_data=['geoid'])'''
+
+    return fig, para
 
 
 if __name__ == '__main__':
