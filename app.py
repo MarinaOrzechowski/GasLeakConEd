@@ -8,7 +8,9 @@ from dash.dependencies import Input, Output, State
 import os
 
 from itertools import combinations
-from sklearn.decomposition import PCA as sklearnPCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn import manifold
 from scipy.stats import pearsonr, spearmanr
 import numpy as np
 import pandas as pd
@@ -25,8 +27,11 @@ mapbox_style = "mapbox://styles/mishkice/ckbjhq6w50hlc1io4cnqg7svc"
 
 # Load data
 dir_path = os.path.dirname(os.path.realpath(__file__))
-df = pd.read_csv(dir_path + '\data\processed\data_with_centroids_updated.csv')
-# r'C:\Users\mskac\machineLearning\GasLeakConEd\data\data_with_centroids_updated.csv')
+df = pd.read_csv(
+    dir_path + '\data\processed\important_(used_in_app)\Merged_asc_fdny_data.csv')
+df = df.dropna()
+centers_df = pd.read_csv(
+    dir_path + '\data\processed\important_(used_in_app)\geoid_with_centers.csv')
 
 # bins
 BINS = [
@@ -65,8 +70,8 @@ colors = {
 
 
 '''def find_colorscale_by_boro(df):
-    color_by_boro = ['#6a2c70' if row['boro_name'] == 'manhattan' else '#b83b5e' if row['boro_name'] == 'brooklyn' else '#f08a5d' if row['boro_name'] ==
-                     'queens' else '#f9ed69' if row['boro_name'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
+    color_by_boro = ['#6a2c70' if row['boro'] == 'manhattan' else '#b83b5e' if row['boro'] == 'brooklyn' else '#f08a5d' if row['boro'] ==
+                     'queens' else '#f9ed69' if row['boro'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
     return color_by_boro
 colorscale_by_boro = ['#6a2c70', '#b83b5e', '#f08a5d', '#f9ed69', '#3ec1d3']'''
 
@@ -96,7 +101,7 @@ app.layout = html.Div(
                     options=[
                         {
                             'label': i, 'value': i
-                        } for i in df['ntaname'].unique()
+                        } for i in centers_df['nta'].unique()
                     ],
                     multi=True,
                     placeholder='Choose neighborhoods')
@@ -110,24 +115,11 @@ app.layout = html.Div(
                     id="dropdownAttr",
                     options=[
                         {
-                            "label": "Poverty Rate",
-                            "value": "povertyrate",
-                        },
-                        {
-                            "label": "Unemployment Rate",
-                            "value": "unemploymentrate",
-                        },
-                        {
-                            "label": "Number of crimes per person",
-                            "value": "crimes_person",
-                        },
-                        {
-                            "label": "Number of reported to FDNY gas leask per person",
-                            "value": "gas_leaks_person",
-                        },
+                            'label': i, 'value': i
+                        } for i in df.columns[2:] if i != 'median_houshold_income'
                     ],
-                    value=['gas_leaks_person',
-                           'unemploymentrate', 'povertyrate'],
+                    value=['gas_leaks_per_person',
+                           'median_age', 'lonely_housholder_over65%'],
                     multi=True,
                     placeholder="Select attributes",
                     style={'display': 'inline-block', 'width': '100%'},
@@ -141,16 +133,17 @@ app.layout = html.Div(
 
         html.Div([
 
-            # dropdown to choose type of graph
+            # range slider to choose year
             html.Div([
-                dcc.RangeSlider(
+                dcc.Slider(
                     id="timeline",
-                    min=df.incident_date_time[6:10].min(),
-                    max=df.incident_date_time[6:10].max(),
+                    min=2013,
+                    max=2018,
                     step=1,
-                    marks={str(year): str(year)
-                           for year in df.incident_date_time[6:10].unique()},
-                    value=[max, max]
+                    marks={2013: '2013', 2014: '2014', 2015: '2015',
+                           2016: '2016', 2017: '2017', 2018: '2018'},
+                    value=2018,
+                    included=False
                 )
             ],
                 className='six columns',
@@ -246,7 +239,7 @@ app.layout = html.Div(
 ######################################################################################################################
 # timeline callback
 ######################################################################################################################
-
+'''
 @ app.callback(
     Output("data_frame", "data"),
     [Input("timeline", "value")],
@@ -255,7 +248,7 @@ def choose_years(choice_years):
 
     df = df[(df.incident_date_time.str[6:10] >= choice_years[0]) &
             (df.incident_date_time.str[6:10] <= choice_years[1])]
-    return df
+    return df'''
 
 ######################################################################################################################
 # map callback
@@ -264,11 +257,13 @@ def choose_years(choice_years):
 
 @ app.callback(
     Output("mapGraph", "figure"),
-    [Input("dropdownNta", "value"),
-     Input("data_frame", "data")],
+    [Input("timeline", "value"),
+     Input("dropdownNta", "value")],
     [State("mapGraph", "figure")],
 )
-def display_map(choiceMap, df, figure):
+def display_map(year, choiceMap, figure):
+
+    df_selected = df[df.incident_year == year]
 
     annotations = [
         dict(
@@ -284,10 +279,10 @@ def display_map(choiceMap, df, figure):
 
     bins = BINS
     colorscale = DEFAULT_COLORSCALE
-    latitude = df["centerLat"]
-    longitude = df["centerLong"]
-    hover_text = df["hover"]
-    base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/master/data/geolayers/gasleaks_per_person/"
+    latitude = centers_df["centerLat"]
+    longitude = centers_df["centerLong"]
+    hover_text = centers_df["hover"]
+    base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/ct_geolayers/"
 
     cm = dict(zip(bins, colorscale))
     data = [
@@ -344,10 +339,12 @@ def display_map(choiceMap, df, figure):
     )
 
     for bin in bins:
+
         geo_layer = dict(
             sourcetype="geojson",
-            source=base + bin + ".geojson",
+            source=base + str(year)+'_' + bin + ".geojson",
             type="fill",
+
             color=cm[bin],
             opacity=DEFAULT_OPACITY,
             # CHANGE THIS
@@ -367,10 +364,9 @@ def display_map(choiceMap, df, figure):
 @app.callback(
     Output('dropdownNta', 'value'),
     [
-        Input('mapGraph', 'selectedData'),
-        Input('data_frame', 'data')
+        Input('mapGraph', 'selectedData')
     ])
-def reset_dropdown_selected(selectedAreaMap, df):
+def reset_dropdown_selected(selectedAreaMap):
     if selectedAreaMap is not None:
         return None
 
@@ -394,17 +390,18 @@ def reset_map_selected(selectedDropdown):
         Output('scatter_matrix', 'figure'),
         Output('para_coor', 'figure')
     ],
-    [
+    [Input("timeline", "value"),
         Input('mapGraph', 'selectedData'),
         Input('dropdownNta', 'value'),
-        Input('dropdownAttr', 'value'),
-        Input('data_frame', 'data')
-    ])
-def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, df):
+        Input('dropdownAttr', 'value')
+     ])
+def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedAttr):
 
     num_of_attributes = len(selectedAttr)
-    df_selected = df
-    title_part = ' census tracks'
+    df_selected = df[(df.incident_year == year)]
+
+    df_selected = df_selected.merge(centers_df, on='geoid')
+    title_part = ' census tracts'
     key = 'geoid'
 
     font_ann = dict(
@@ -413,7 +410,10 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, d
     )
 
     if selectedAreaDropdown is not None:
-        df_selected = df_selected[df_selected['ntaname'].isin(
+        '''selected_geoids = [row.geoid for index, row in centers_df[centers_df['nta'].isin(selectedAreaDropdown)].iterrows()]
+        df_selected = df_selected[df_selected['geoid'].isin(
+            selected_geoids)]'''
+        df_selected = df_selected[df_selected['nta'].isin(
             selectedAreaDropdown)]
     elif selectedAreaMap is not None:
         points = selectedAreaMap["points"]
@@ -421,8 +421,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, d
                       for point in points]
         df_selected = df_selected[df_selected[key].isin(area_names)]
 
-    index_vals = df_selected['boro_name'].astype('category').cat.codes
-    coef_list = []
+    index_vals = df_selected['boro'].astype('category').cat.codes
 
     # find pearson coeff and p_value for each pair of attributes
     '''pairs = combinations(selectedAttr, 2)
@@ -560,7 +559,8 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, d
         yaxis4=dict(axisd))
     # annotations=ann)
 
-    arr = [str(r) for r in selectedAttr]
+    #arr = [str(r) for r in selectedAttr]
+    arr = [str(r) for r in df.columns[2:] if r != 'median_houshold_income']
     para = px.parallel_coordinates(df_selected, color="geoid",
                                    dimensions=arr,
                                    color_continuous_scale=px.colors.diverging.Tealrose,
@@ -571,7 +571,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, d
         dimensions=[dict(label=selectedAttr[i],
                          values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
                     ],
-        text=df_selected['boro_name'] + ', ' + df_selected['ntaname'],
+        text=df_selected['boro'] + ', ' + df_selected['nta'],
         hoverinfo="x+y+text",
         # showlegend=True,
         marker=dict(colorscale='Viridis',
@@ -586,5 +586,5 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedAttr, d
 
 
 if __name__ == '__main__':
-    app.config['suppress_callback_exceptions'] = True
+   # app.config['suppress_callback_exceptions'] = True
     app.run_server(debug=True)
