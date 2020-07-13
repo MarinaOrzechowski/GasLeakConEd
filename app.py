@@ -1,6 +1,7 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+from plotly.subplots import make_subplots
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
@@ -72,8 +73,12 @@ colors = {
 '''def find_colorscale_by_boro(df):
     color_by_boro = ['#6a2c70' if row['boro'] == 'manhattan' else '#b83b5e' if row['boro'] == 'brooklyn' else '#f08a5d' if row['boro'] ==
                      'queens' else '#f9ed69' if row['boro'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
-    return color_by_boro
-colorscale_by_boro = ['#6a2c70', '#b83b5e', '#f08a5d', '#f9ed69', '#3ec1d3']'''
+    return color_by_boro'''
+colorscale_by_boro = ['#e41a1c',
+                      '#377eb8',
+                      '#4daf4a',
+                      '#984ea3',
+                      '#ff7f00']
 
 
 # page layout
@@ -116,9 +121,9 @@ app.layout = html.Div(
                     options=[
                         {
                             'label': i, 'value': i
-                        } for i in df.columns[2:] if i != 'median_houshold_income'
+                        } for i in df.columns[3:] if (i != 'median_houshold_income') & (i != 'gas_leaks_per_person')
                     ],
-                    value=['gas_leaks_per_person',
+                    value=['avg_houshold_size',
                            'median_age', 'lonely_housholder_over65%'],
                     multi=True,
                     placeholder="Select attributes",
@@ -221,6 +226,14 @@ app.layout = html.Div(
         ],
             className='row'),
 
+        # row with pearson coeff heatmap
+        html.Div([
+            dcc.Graph(
+                id='pearson_heatmap'
+            )
+        ],
+            className='row'),
+
         # row with parallel coordinates
         html.Div([
             dcc.Graph(
@@ -250,6 +263,7 @@ def choose_years(choice_years):
             (df.incident_date_time.str[6:10] <= choice_years[1])]
     return df'''
 
+
 ######################################################################################################################
 # map callback
 ######################################################################################################################
@@ -265,6 +279,10 @@ def display_map(year, choiceMap, figure):
 
     df_selected = df[df.incident_year == year]
 
+    df_selected = df_selected.merge(centers_df, on='geoid')
+    df_selected['hover'] = df_selected['hover']+'<br>#Gas leaks per person: ' + \
+        df_selected['gas_leaks_per_person'].round(6).astype(str)
+
     annotations = [
         dict(
             showarrow=False,
@@ -279,10 +297,10 @@ def display_map(year, choiceMap, figure):
 
     bins = BINS
     colorscale = DEFAULT_COLORSCALE
-    latitude = centers_df["centerLat"]
-    longitude = centers_df["centerLong"]
-    hover_text = centers_df["hover"]
-    base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/ct_geolayers/"
+    latitude = df_selected["centerLat"]
+    longitude = df_selected["centerLong"]
+    hover_text = df_selected["hover"]
+    base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/geolayers/"
 
     cm = dict(zip(bins, colorscale))
     data = [
@@ -381,14 +399,15 @@ def reset_map_selected(selectedDropdown):
         return None
 '''
 ######################################################################################################################
-# scattermatrix callback
+# parallel coordinates | scattermatrix | pearson coeff heatmap callbacks
 ######################################################################################################################
 
 
 @app.callback(
     [
         Output('scatter_matrix', 'figure'),
-        Output('para_coor', 'figure')
+        Output('para_coor', 'figure'),
+        Output('pearson_heatmap', 'figure')
     ],
     [Input("timeline", "value"),
         Input('mapGraph', 'selectedData'),
@@ -410,9 +429,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     )
 
     if selectedAreaDropdown is not None:
-        '''selected_geoids = [row.geoid for index, row in centers_df[centers_df['nta'].isin(selectedAreaDropdown)].iterrows()]
-        df_selected = df_selected[df_selected['geoid'].isin(
-            selected_geoids)]'''
+
         df_selected = df_selected[df_selected['nta'].isin(
             selectedAreaDropdown)]
     elif selectedAreaMap is not None:
@@ -421,168 +438,69 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
                       for point in points]
         df_selected = df_selected[df_selected[key].isin(area_names)]
 
-    index_vals = df_selected['boro'].astype('category').cat.codes
-
-    # find pearson coeff and p_value for each pair of attributes
-    '''pairs = combinations(selectedAttr, 2)
-    flag = True
-    for pair in pairs:
-        if len(df_selected[pair[0]]) >= 2 and len(df_selected[pair[1]]) >= 2:
-            coef_list.append(
-                pearsonr(df_selected[pair[0]], df_selected[pair[1]]))
-        else:
-            flag = False
-    if flag:
-        comb = [x for x in combinations(
-            [i+1 for i in range(num_of_attributes)], 2)]
-        ann = []
-        for i in range(num_of_attributes):
-            ann.append(
-                dict(
-                    x=1,
-                    y=1,
-                    xref="x"+str(comb[i][0]),
-                    yref="y"+str(comb[i][0]),
-                    font=font_ann,
-                    text="PCC: " +
-                    str(round(coef_list[i][0], 2)) + "<br>p: " +
-                    ('{:0.1e}'.format(coef_list[i][1])),
-                    showarrow=False
-                )
-            )
-            ann.append(
-                dict(
-                    x=1,
-                    y=1,
-                    xref="x"+str(comb[i][0]),
-                    yref="y"+str(comb[i][0]),
-                    font=font_ann,
-                    text="PCC: " +
-                    str(round(coef_list[i][0], 2)) + "<br>p: " +
-                    ('{:0.1e}'.format(coef_list[i][1])),
-                    showarrow=False
-                )
-            )
-        ann = [
-            dict(
-                x=1,
-                y=1,
-                xref="x2",
-                yref="y1",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[0][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[0][1])),
-                showarrow=False,
-            ),
-            dict(
-                x=1,
-                y=1,
-                xref="x1",
-                yref="y2",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[0][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[0][1])),
-                showarrow=False,
-            ),
-            dict(
-                x=1,
-                y=1,
-                xref="x3",
-                yref="y1",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[1][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[1][1])),
-                showarrow=False,
-            ),
-            dict(
-                x=1,
-                y=1,
-                xref="x1",
-                yref="y3",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[1][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[1][1])),
-                showarrow=False,
-            ),
-            dict(
-                x=1,
-                y=1,
-                xref="x3",
-                yref="y2",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[2][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[2][1])),
-                showarrow=False,
-            ),
-            dict(
-                x=1,
-                y=1,
-                xref="x2",
-                yref="y3",
-                font=font_ann,
-                text="PCC: " +
-                str(round(coef_list[2][0], 2)) + "<br>p: " +
-                ('{:0.1e}'.format(coef_list[2][1])),
-                showarrow=False,
-            ),
-        ]
-    else:
-        ann = []'''
-
-    axisd = dict(showline=True,
-                 zeroline=False,
-                 gridcolor='#cecece',
-                 showticklabels=True)
-
-    # here we build a scatter matrix, and add annotations for each subgraph
-    layout = go.Layout(
-        dragmode='select',
-
-        margin=dict(l=0, r=0, b=0, t=0, pad=0),
-        autosize=False,
-        hovermode='closest',
-        font=dict(color=colors['text2'], size=12),
-        plot_bgcolor=colors['background'],
-        paper_bgcolor=colors['background'],
-        xaxis1=dict(axisd),
-        xaxis2=dict(axisd),
-        xaxis3=dict(axisd),
-        xaxis4=dict(axisd),
-        yaxis1=dict(axisd),
-        yaxis2=dict(axisd),
-        yaxis3=dict(axisd),
-        yaxis4=dict(axisd))
-    # annotations=ann)
-
-    #arr = [str(r) for r in selectedAttr]
-    arr = [str(r) for r in df.columns[2:] if r != 'median_houshold_income']
+    # parallel coordinates
+    arr = [str(r) for r in df.columns[3:] if r != 'median_houshold_income']
     para = px.parallel_coordinates(df_selected, color="geoid",
                                    dimensions=arr,
                                    color_continuous_scale=px.colors.diverging.Tealrose,
                                    color_continuous_midpoint=2
                                    )
 
-    fig = go.Figure(data=go.Splom(
-        dimensions=[dict(label=selectedAttr[i],
-                         values=df_selected[selectedAttr[i]]) for i in range(num_of_attributes)
-                    ],
-        text=df_selected['boro'] + ', ' + df_selected['nta'],
-        hoverinfo="x+y+text",
-        # showlegend=True,
-        marker=dict(colorscale='Viridis',
-                    color=index_vals,
-                    showscale=False,  # colors encode categorical variables
-                    line_color='black', line_width=0.4),
-        diagonal=dict(visible=True)
-    ), layout=layout
-    )
+    # scatterplots
+    fig = make_subplots(rows=len(selectedAttr), cols=1, subplot_titles=[
+        'Gas Leaks per Person VS ' + attr.replace('_', ' ').capitalize() for attr in selectedAttr
+    ])
 
-    return fig, para
+    show_legend = True
+    for i in range(len(selectedAttr)):
+
+        for ind, b in enumerate(df_selected['boro'].unique()):
+            if i > 0:
+                show_legend = False
+            fig.add_trace(
+                go.Scatter(x=df_selected[df_selected['boro'] == b]['gas_leaks_per_person'],
+                           y=df_selected[df_selected['boro']
+                                         == b][selectedAttr[i]],
+                           mode='markers',
+                           marker_color=colorscale_by_boro[ind],
+                           showlegend=show_legend,
+                           name=b),
+
+                row=i+1, col=1
+            )
+
+    fig.update_traces(mode='markers', marker_line_width=0.5, marker_size=5)
+    fig.update_layout(font=dict(color=colors['text2'], size=12),
+                      plot_bgcolor=colors['background'],
+                      paper_bgcolor=colors['background'],
+                      height=900,
+                      title={
+        'text': "<b>Comparison of Gas Leak#/person to Other Attributes</b>",
+        'x': 0.5,
+        'xanchor': 'center'})
+
+    # pearson coeff heatmap
+    l = {}
+    df_heatmap = df_selected.drop(
+        ['incident_year', 'Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
+    pearsoncorr = df_heatmap.corr(method='pearson')
+    print(pearsoncorr)
+    heatmap = go.Figure(data=go.Heatmap(
+        z=[pearsoncorr[i] for i in pearsoncorr.columns],
+        x=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
+        y=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
+        colorscale='Viridis'
+    ))
+    heatmap.update_layout(
+        title={
+            'text': '<b>Pearson correlation coefficient</b>',
+            'y': 0.9,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'},
+        height=700,
+        autosize=False)
+    return fig, para, heatmap
 
 
 if __name__ == '__main__':
