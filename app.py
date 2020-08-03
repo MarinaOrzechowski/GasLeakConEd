@@ -1,5 +1,6 @@
 import dash
 import dash_core_components as dcc
+import dash_daq as daq
 import dash_html_components as html
 from plotly.subplots import make_subplots
 import plotly.express as px
@@ -29,12 +30,13 @@ df = pd.read_csv(
 df.rename(columns={
           'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 df = df.dropna()
+df = df.drop(['occupied_housing_units%'], axis=1)
 centers_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 months_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
 property_use_df = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\FULL_fdny_2013_2018.csv')
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/FULL_fdny_2013_2018.csv')
 
 
 # bins
@@ -65,7 +67,8 @@ DEFAULT_OPACITY = 0.8
 
 
 colors = {
-    'background': '#F8F8F8',
+    'background': '#F5F5F5',
+    'background2': '#d3d3d3',
     'text': '#000000',
     'text2': '#000000',
     'border': '#000000',
@@ -146,10 +149,10 @@ app.layout = html.Div(
                 dcc.Slider(
                     id="timeline",
                     min=2013,
-                    max=2018,
+                    max=2019,
                     step=1,
                     marks={2013: '2013', 2014: '2014', 2015: '2015',
-                           2016: '2016', 2017: '2017', 2018: '2018'},
+                           2016: '2016', 2017: '2017', 2018: '2018 jan-jun', 2019: '2013-2018'},
                     value=2018,
                     included=False
                 )
@@ -158,24 +161,33 @@ app.layout = html.Div(
                 style={'float': 'left'}
             ),
 
-            # dropdown to choose type of graph
+            # toggle to hide outliers
             html.Div([
-                dcc.Dropdown(
-                    id="dropdownGraph",
-                    options=[
-                        {
-                            "label": "Scatter matrix (pairwise comparison)",
-                            "value": "scatter",
-                        }
-                    ],
-                    value='scatter',
-                    multi=False,
-                    placeholder="Select type of graph",
-                    style={'width': '100%'},
+                daq.BooleanSwitch(
+                    id='outliers_toggle',
+                    on=True,
+                    label='Hide outliers, and set limit to ',
+                    labelPosition='right',
+                    color='#2a9df4'
                 )
             ],
-                className='six columns',
-                style={'float': 'right'}
+                className='two columns',
+                style={'float': 'left'}
+            ),
+
+            # input field for upper limit on gas_leaks_per_person
+            html.Div([
+                dcc.Input(
+                    id='limit_input_field',
+                    type='number',
+                    value=0.04,
+                    min=0,
+                    max=1,
+                    step=0.01
+                )
+            ],
+                className='one column',
+                style={'float': 'left', 'margin': 0, 'padding': 0}
             )
 
         ],
@@ -262,6 +274,22 @@ def hex_to_rgb(hex_color: str) -> tuple:
     return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
 
 # callbacks
+
+
+######################################################################################################################
+# limit_input_field callback
+######################################################################################################################
+
+@app.callback(
+    Output('limit_input_field', 'style'),
+    [
+        Input('outliers_toggle', 'on')
+    ])
+def activate_input(is_on):
+    if is_on:
+        return {'display': 'block'}
+    else:
+        return {'display': 'none'}
 
 ######################################################################################################################
 # timeline_by_month callback
@@ -361,10 +389,11 @@ def choose_years(choice_years):
         Input('timeline', 'value')
     ])
 def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
-
+    is2018 = ' (Jan-Jun) ' if selectedYear == 2018 else ''
     df_selected = property_use_df
-    df_selected = df_selected[df_selected['incident_date_time'].str[6:10] == str(
-        selectedYear)]
+    if selectedYear != 2019:
+        df_selected = df_selected[df_selected['incident_date_time'].str[6:10] == str(
+            selectedYear)]
 
     key = 'geoid'
 
@@ -407,7 +436,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
                 'size': 12
             },
             title={
-                'text': "<b>Use of Properties where Gas Leaks Happened</b>",
+                'text': "<b>Use of Properties where Gas Leaks Happened, " + str(selectedYear) + is2018+"</b>",
                 'x': 0.5,
                 'xanchor': 'center'}))
     piechart.update_traces(hoverinfo='label+value', textinfo='text+percent', opacity=0.9,
@@ -427,11 +456,15 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
 )
 def display_map(year, choiceMap, figure):
 
-    df_selected = df[df.incident_year == year]
+    if year != 2019:
+        df_selected = df[df.incident_year == year]
+    else:
+        df_selected = df
 
     df_selected = df_selected.merge(centers_df, on='geoid')
     df_selected['hover'] = df_selected['hover']+'<br>#Gas leaks per person: ' + \
-        df_selected['gas_leaks_per_person'].round(6).astype(str)
+        df_selected['gas_leaks_per_person'].round(6).astype(str)+'<br>Avg. built year: ' + \
+        df_selected['avg_year_built'].round(5).astype(str)
 
     annotations = [
         dict(
@@ -507,10 +540,13 @@ def display_map(year, choiceMap, figure):
     )
 
     for bin in bins:
-
+        if year == 2019:
+            year_str = 'all'
+        else:
+            year_str = str(year)
         geo_layer = dict(
             sourcetype="geojson",
-            source=base + str(year)+'_' + bin + ".geojson",
+            source=base + year_str+'_' + bin + ".geojson",
             type="fill",
 
             color=cm[bin],
@@ -562,12 +598,21 @@ def reset_map_selected(selectedDropdown):
     [Input("timeline", "value"),
         Input('mapGraph', 'selectedData'),
         Input('dropdownNta', 'value'),
-        Input('dropdownAttr', 'value')
+        Input('dropdownAttr', 'value'),
+        Input('outliers_toggle', 'on'),
+        Input('limit_input_field', 'value')
      ])
-def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedAttr):
+def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedAttr, hideOutliers, limit):
+    is2018 = ' (Jan-Jun) ' if year == 2018 else ''
 
     num_of_attributes = len(selectedAttr)
-    df_selected = df[(df.incident_year == year)]
+    if year != 2019:
+        df_selected = df[(df.incident_year == year)]
+    else:
+        df_selected = df
+
+    if hideOutliers:
+        df_selected = df_selected[df_selected['gas_leaks_per_person'] < limit]
 
     df_selected = df_selected.merge(centers_df, on='geoid')
     df_selected = df_selected[df_selected['nta'].str[:6]
@@ -599,16 +644,17 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
                 label=attr.replace('_', ' '), values=df_selected[attr]) for attr in arr]
 
     para = go.Figure(data=go.Parcoords(line=dict(color=df_selected['gas_leaks_per_person'],
-                                                 colorscale=px.colors.sequential.Viridis,
+                                                 colorscale=px.colors.sequential.Blues,
                                                  showscale=True
                                                  ), meta=dict(colorbar=dict(
                                                      title="gas leaks/person"
                                                  ),),
                                        dimensions=dim,
                                        labelangle=10))
+
     para.update_layout(height=500,
                        plot_bgcolor=colors['background'],
-                       paper_bgcolor=colors['background'],
+                       paper_bgcolor=colors['background2'],
 
                        )
 
@@ -644,7 +690,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
                       height=900,
 
                       title={
-        'text': "<b>Comparison of Gas Leak#/person to Other Attributes</b>",
+        'text': "<b>Comparison of Gas Leak#/person to Other Attributes, " + str(year) + is2018+'</b>',
         'x': 0.5,
         'xanchor': 'center'})
 
@@ -658,16 +704,18 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
         z=[pearsoncorr[i] for i in pearsoncorr.columns],
         x=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
         y=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
-        colorscale='Viridis'
+        colorscale='PRGn'
     ))
     heatmap.update_layout(
         title={
-            'text': '<b>Pearson correlation coefficient</b>',
+            'text': '<b>Pearson correlation coefficient, '+str(year)+is2018+'</b>',
             'y': 0.9,
             'x': 0.5,
             'xanchor': 'center',
             'yanchor': 'top'},
         height=700,
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
         autosize=False)
     return fig, para, heatmap
 
