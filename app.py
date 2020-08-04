@@ -31,6 +31,9 @@ df.rename(columns={
           'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 df = df.dropna()
 df = df.drop(['occupied_housing_units%'], axis=1)
+df['incident_year'] = df['incident_year'].astype(int)
+df['gas_leaks_per_person'] = df['gas_leaks_per_person'].astype(float)
+df['geoid'] = df['geoid'].astype('int64')
 centers_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 months_df = pd.read_csv(
@@ -152,8 +155,8 @@ app.layout = html.Div(
                     max=2019,
                     step=1,
                     marks={2013: '2013', 2014: '2014', 2015: '2015',
-                           2016: '2016', 2017: '2017', 2018: '2018 jan-jun', 2019: '2013-2018'},
-                    value=2018,
+                           2016: '2016', 2017: '2017', 2018: '2018 (Jan-Jun)', 2019: '2013-18'},
+                    value=2013,
                     included=False
                 )
             ],
@@ -171,7 +174,7 @@ app.layout = html.Div(
                     color='#2a9df4'
                 )
             ],
-                className='two columns',
+                className='three columns',
                 style={'float': 'left'}
             ),
 
@@ -606,6 +609,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     is2018 = ' (Jan-Jun) ' if year == 2018 else ''
 
     num_of_attributes = len(selectedAttr)
+
     if year != 2019:
         df_selected = df[(df.incident_year == year)]
     else:
@@ -618,11 +622,6 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     df_selected = df_selected[df_selected['nta'].str[:6]
                               != 'park-c']
     key = 'geoid'
-
-    font_ann = dict(
-        size=10,
-        color=colors['text']
-    )
 
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
