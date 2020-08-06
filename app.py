@@ -31,9 +31,10 @@ df.rename(columns={
           'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 df = df.dropna()
 df = df.drop(['occupied_housing_units%'], axis=1)
-df['incident_year'] = df['incident_year'].astype(int)
-df['gas_leaks_per_person'] = df['gas_leaks_per_person'].astype(float)
-df['geoid'] = df['geoid'].astype('int64')
+df_all_years = pd.read_csv(
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_all_years.csv')
+df_all_years = df_all_years.dropna()
+df_all_years = df_all_years.drop(['occupied_housing_units%'], axis=1)
 centers_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 months_df = pd.read_csv(
@@ -78,19 +79,11 @@ colors = {
     'chart': ['#27496d', '#00909e', '#4d4c7d']
 }
 
-# function to assign colors to markers by boroughs
-
-
-'''def find_colorscale_by_boro(df):
-    color_by_boro = ['#6a2c70' if row['boro'] == 'manhattan' else '#b83b5e' if row['boro'] == 'brooklyn' else '#f08a5d' if row['boro'] ==
-                     'queens' else '#f9ed69' if row['boro'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
-    return color_by_boro'''
 colorscale_by_boro = ['#e41a1c',
                       '#377eb8',
                       '#4daf4a',
                       '#984ea3',
                       '#ff7f00']
-
 
 # page layout
 app.layout = html.Div(
@@ -155,8 +148,8 @@ app.layout = html.Div(
                     max=2019,
                     step=1,
                     marks={2013: '2013', 2014: '2014', 2015: '2015',
-                           2016: '2016', 2017: '2017', 2018: '2018 (Jan-Jun)', 2019: '2013-18'},
-                    value=2013,
+                           2016: '2016', 2017: '2017', 2018: '2018 jan-jun', 2019: '2013-2018'},
+                    value=2018,
                     included=False
                 )
             ],
@@ -174,7 +167,7 @@ app.layout = html.Div(
                     color='#2a9df4'
                 )
             ],
-                className='three columns',
+                className='two columns',
                 style={'float': 'left'}
             ),
 
@@ -462,7 +455,7 @@ def display_map(year, choiceMap, figure):
     if year != 2019:
         df_selected = df[df.incident_year == year]
     else:
-        df_selected = df
+        df_selected = df_all_years
 
     df_selected = df_selected.merge(centers_df, on='geoid')
     df_selected['hover'] = df_selected['hover']+'<br>#Gas leaks per person: ' + \
@@ -609,11 +602,10 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     is2018 = ' (Jan-Jun) ' if year == 2018 else ''
 
     num_of_attributes = len(selectedAttr)
-
     if year != 2019:
         df_selected = df[(df.incident_year == year)]
     else:
-        df_selected = df
+        df_selected = df_all_years
 
     if hideOutliers:
         df_selected = df_selected[df_selected['gas_leaks_per_person'] < limit]
@@ -622,6 +614,11 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     df_selected = df_selected[df_selected['nta'].str[:6]
                               != 'park-c']
     key = 'geoid'
+
+    font_ann = dict(
+        size=10,
+        color=colors['text']
+    )
 
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
