@@ -32,11 +32,11 @@ df['incident_year'] = df['incident_year'].astype(int)
 df['gas_leaks_per_person'] = df['gas_leaks_per_person'].astype(float)
 df['geoid'] = df['geoid'].astype('int64')
 centers_df = pd.read_csv(
-    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
+    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\geoid_with_centers.csv')
 months_df = pd.read_csv(
-    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
+    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_months.csv')
 property_use_df = pd.read_csv(
-    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/FULL_fdny_2013_2018.csv')
+    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\FULL_fdny_2013_2018.csv')
 df_all_years = pd.read_csv(
     r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_all_years.csv')
 df_all_years = df_all_years.dropna()
