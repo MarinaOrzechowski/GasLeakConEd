@@ -7,9 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
 
-import os
 
-from scipy.stats import pearsonr, spearmanr
 import numpy as np
 import pandas as pd
 
@@ -24,24 +22,27 @@ mapbox_access_token = 'pk.eyJ1IjoibWlzaGtpY2UiLCJhIjoiY2s5MG94bWRoMDQxdjNmcHI1aW
 mapbox_style = "mapbox://styles/mishkice/ckbjhq6w50hlc1io4cnqg7svc"
 
 # Load data
-dir_path = os.path.dirname(os.path.realpath(__file__))
 df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data.csv')
 df.rename(columns={
           'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 df = df.dropna()
 df = df.drop(['occupied_housing_units%'], axis=1)
-df_all_years = pd.read_csv(
-    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_all_years.csv')
-df_all_years = df_all_years.dropna()
-df_all_years = df_all_years.drop(['occupied_housing_units%'], axis=1)
+df['incident_year'] = df['incident_year'].astype(int)
+df['gas_leaks_per_person'] = df['gas_leaks_per_person'].astype(float)
+df['geoid'] = df['geoid'].astype('int64')
 centers_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 months_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
 property_use_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/FULL_fdny_2013_2018.csv')
-
+df_all_years = pd.read_csv(
+    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_all_years.csv')
+df_all_years = df_all_years.dropna()
+df_all_years = df_all_years.drop(['occupied_housing_units%'], axis=1)
+df_all_years.rename(columns={
+    'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 
 # bins
 BINS = [
@@ -79,11 +80,19 @@ colors = {
     'chart': ['#27496d', '#00909e', '#4d4c7d']
 }
 
+# function to assign colors to markers by boroughs
+
+
+'''def find_colorscale_by_boro(df):
+    color_by_boro = ['#6a2c70' if row['boro'] == 'manhattan' else '#b83b5e' if row['boro'] == 'brooklyn' else '#f08a5d' if row['boro'] ==
+                     'queens' else '#f9ed69' if row['boro'] == 'staten island' else '#3ec1d3' for index, row in df.iterrows()]
+    return color_by_boro'''
 colorscale_by_boro = ['#e41a1c',
                       '#377eb8',
                       '#4daf4a',
                       '#984ea3',
                       '#ff7f00']
+
 
 # page layout
 app.layout = html.Div(
@@ -148,7 +157,7 @@ app.layout = html.Div(
                     max=2019,
                     step=1,
                     marks={2013: '2013', 2014: '2014', 2015: '2015',
-                           2016: '2016', 2017: '2017', 2018: '2018 jan-jun', 2019: '2013-2018'},
+                           2016: '2016', 2017: '2017', 2018: '2018 (Jan-Jun)', 2019: 'all'},
                     value=2018,
                     included=False
                 )
@@ -162,12 +171,12 @@ app.layout = html.Div(
                 daq.BooleanSwitch(
                     id='outliers_toggle',
                     on=True,
-                    label='Hide outliers, and set limit to ',
+                    label='Hide outliers, set limit of gas_leaks/person to',
                     labelPosition='right',
                     color='#2a9df4'
                 )
             ],
-                className='two columns',
+                className='three columns',
                 style={'float': 'left'}
             ),
 
@@ -385,18 +394,19 @@ def choose_years(choice_years):
         Input('timeline', 'value')
     ])
 def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
-    is2018 = ' (Jan-Jun) ' if selectedYear == 2018 else ''
+    if selectedYear == 2018:
+        title_part = '2018 (Jan-Jun)'
+    elif selectedYear == 2019:
+        title_part = '2013-2018'
+    else:
+        title_part = str(selectedYear)
+
     df_selected = property_use_df
     if selectedYear != 2019:
         df_selected = df_selected[df_selected['incident_date_time'].str[6:10] == str(
             selectedYear)]
 
     key = 'geoid'
-
-    font_ann = dict(
-        size=10,
-        color=colors['text']
-    )
 
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
@@ -432,7 +442,7 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
                 'size': 12
             },
             title={
-                'text': "<b>Use of Properties where Gas Leaks Happened, " + str(selectedYear) + is2018+"</b>",
+                'text': "<b>Use of Properties where Gas Leaks Happened, " + title_part+"</b>",
                 'x': 0.5,
                 'xanchor': 'center'}))
     piechart.update_traces(hoverinfo='label+value', textinfo='text+percent', opacity=0.9,
@@ -599,9 +609,16 @@ def reset_map_selected(selectedDropdown):
         Input('limit_input_field', 'value')
      ])
 def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedAttr, hideOutliers, limit):
-    is2018 = ' (Jan-Jun) ' if year == 2018 else ''
+
+    if year == 2018:
+        title_part = '2018 (Jan-Jun)'
+    elif year == 2019:
+        title_part = '2013-2018'
+    else:
+        title_part = str(year)
 
     num_of_attributes = len(selectedAttr)
+
     if year != 2019:
         df_selected = df[(df.incident_year == year)]
     else:
@@ -614,11 +631,6 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     df_selected = df_selected[df_selected['nta'].str[:6]
                               != 'park-c']
     key = 'geoid'
-
-    font_ann = dict(
-        size=10,
-        color=colors['text']
-    )
 
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
@@ -686,7 +698,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
                       height=900,
 
                       title={
-        'text': "<b>Comparison of Gas Leak#/person to Other Attributes, " + str(year) + is2018+'</b>',
+        'text': "<b>Comparison of Gas Leak#/person to Other Attributes, " + title_part + '</b>',
         'x': 0.5,
         'xanchor': 'center'})
 
@@ -694,7 +706,11 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     # pearson coeff heatmap
     l = {}
     df_heatmap = df_selected.drop(
-        ['incident_year', 'Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
+        ['Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
+    if year != 2019:
+        df_heatmap = df_heatmap.drop(
+            ['incident_year'], axis=1)
+
     pearsoncorr = df_heatmap.corr(method='pearson')
     heatmap = go.Figure(data=go.Heatmap(
         z=[pearsoncorr[i] for i in pearsoncorr.columns],
@@ -704,7 +720,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
     ))
     heatmap.update_layout(
         title={
-            'text': '<b>Pearson correlation coefficient, '+str(year)+is2018+'</b>',
+            'text': '<b>Pearson correlation coefficient, '+title_part+'</b>',
             'y': 0.9,
             'x': 0.5,
             'xanchor': 'center',
