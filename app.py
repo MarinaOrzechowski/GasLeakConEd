@@ -11,6 +11,9 @@ from dash.dependencies import Input, Output, State
 import numpy as np
 import pandas as pd
 
+pd.options.mode.chained_assignment = None
+
+
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, meta_tags=[
@@ -22,27 +25,42 @@ mapbox_access_token = 'pk.eyJ1IjoibWlzaGtpY2UiLCJhIjoiY2s5MG94bWRoMDQxdjNmcHI1aW
 mapbox_style = "mapbox://styles/mishkice/ckbjhq6w50hlc1io4cnqg7svc"
 
 # Load data
+base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/geolayers/"
+base2 = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/ct_geolayers/"
 df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data.csv')
 df.rename(columns={
           'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
 df = df.dropna()
 df = df.drop(['occupied_housing_units%'], axis=1)
-df['incident_year'] = df['incident_year'].astype(int)
-df['gas_leaks_per_person'] = df['gas_leaks_per_person'].astype(float)
-df['geoid'] = df['geoid'].astype('int64')
+
+columns = df.columns
+for column in columns:
+    df[column] = pd.to_numeric(df[column])
+
+
 centers_df = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\geoid_with_centers.csv')
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 months_df = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_months.csv')
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
 property_use_df = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\FULL_fdny_2013_2018.csv')
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/FULL_fdny_2013_2018.csv')
+property_use_df['ntaname'] = property_use_df['ntaname'].str.lower()
 df_all_years = pd.read_csv(
-    r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_all_years.csv')
+    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_all_years.csv')
 df_all_years = df_all_years.dropna()
 df_all_years = df_all_years.drop(['occupied_housing_units%'], axis=1)
 df_all_years.rename(columns={
     'housholders_grandparents_responsible_for_grandchildren%': '%housh. grandp resp for grandch'}, inplace=True)
+
+# dictionary where keys are ntas and values are geoids in each of the ntas
+nta_geoid_dict = {}
+for index, row in centers_df.iterrows():
+    if row['nta'] not in nta_geoid_dict:
+        nta_geoid_dict[row['nta']] = [row['geoid']]
+    else:
+        nta_geoid_dict[row['nta']].append(row['geoid'])
+
 
 # bins
 BINS = [
@@ -98,16 +116,32 @@ colorscale_by_boro = ['#e41a1c',
 app.layout = html.Div(
     html.Div([
 
+        # Hidden div inside the app that stores the selected areas on the map and passes it into
+        # the map callback so those areas are colored
+        html.Div(id='color_selection', style={'display': 'none'}),
+
         # row with the header
         html.Div([
             html.H1(
                 children='NYC Gas Leaks Information',
-                style={
-                    'textAlign': 'center',
-                    'color': colors['text'],
-                    'paddingTop':'1%',
-                    'paddingBottom': '3%'
-                })
+                 className='eleven columns'),
+            html.Button('?', id='InfoBtn', n_clicks=0, style={}),
+
+        ], style={
+            'textAlign': 'center',
+            'color': colors['text'],
+            'paddingTop':'1%',
+            'paddingBottom': '1%'
+        }, className='row'),
+
+        # row with a hidden info box
+        html.Div([
+            dcc.Textarea(
+                id='InfoTxt',
+                disabled=True,
+                value="Description of the visualization here",
+                style={'width': '100%'}
+            ),
         ], className='row'),
 
         # row 1 with the dropdowns
@@ -278,12 +312,54 @@ def hex_to_rgb(hex_color: str) -> tuple:
         hex_color = hex_color * 2
     return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
 
-# callbacks
+######################################################################################################################
+# InfoTxt callback
+######################################################################################################################
 
+
+@app.callback(
+    Output('InfoTxt', 'style'),
+    [
+        Input('InfoBtn', 'n_clicks')
+    ])
+def activate_input(clicks):
+    if clicks % 2 == 0:
+        return {'display': 'none'}
+    else:
+        return {'display': 'inline', 'width': '100%'}
+
+######################################################################################################################
+# hidden_map_selection callback
+######################################################################################################################
+
+
+@app.callback(
+    Output('color_selection', 'children'),
+    [
+        Input('mapGraph', 'selectedData'),
+        Input('dropdownNta', 'value')
+    ])
+def color_selection_on_map(selectedAreaMap, selectedAreaDropdown):
+
+    selected = []
+    if selectedAreaDropdown is not None:
+        if len(selectedAreaDropdown) == 0:
+            pass
+        elif 'all' not in selectedAreaDropdown:
+            for nta in selectedAreaDropdown:
+                selected.extend(nta_geoid_dict[nta])
+
+    elif selectedAreaMap is not None:
+        points = selectedAreaMap["points"]
+        selected = np.unique([str(point["text"].split("<br>")[2])
+                              for point in points])
+
+    return selected
 
 ######################################################################################################################
 # limit_input_field callback
 ######################################################################################################################
+
 
 @app.callback(
     Output('limit_input_field', 'style'),
@@ -314,11 +390,6 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown):
                               != 'park-c']
     key = 'geoid'
 
-    font_ann = dict(
-        size=10,
-        color=colors['text']
-    )
-
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
             pass
@@ -341,20 +412,39 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown):
     months = [month for month in range(1, 13)]
     months_str = ['Jan', 'Feb', 'Mar', 'Apr', "May",
                   'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    # add monthly gas_leaks per person for each year
     for year in range(2013, 2018):
 
         df_year = df_selected[df_selected['incident_year'] == year].groupby(['incident_month']).agg(
             {'gas_leaks_per_person': 'mean'}).reset_index()
+
+        # some areas had no gas leaks during some months, so fill it with zeros
+        for i in range(12):
+            if i+1 not in df_year['incident_month']:
+                df_year = df_year.append(
+                    {'incident_month': i+1, 'gas_leaks_per_person': 0}, ignore_index=True)
+
         gas_leaks = [df_year.iloc[i]['gas_leaks_per_person']
-                     for i in range(0, 12)]
+                     for i in range(12)]
+
         fig.add_trace(go.Scatter(x=months_str, y=gas_leaks,
                                  line=dict(width=0.5),
                                  mode='lines+markers',
                                  name=str(year)))
+
+    # add monthly gas_leaks_per_person consolidated for all years 2013-2017 - trend. (2018 doesn't have information about all months)
     temp_df = df_selected.groupby(['incident_month']).agg(
         {'gas_leaks_per_person': 'mean'}).reset_index()
 
-    gas_leaks = [temp_df.iloc[i]['gas_leaks_per_person'] for i in range(0, 12)]
+    # some areas had no gas leaks during some months, so fill it with zeros
+    for i in range(12):
+        if i+1 not in temp_df['incident_month']:
+            temp_df = temp_df.append(
+                {'incident_month': i+1, 'gas_leaks_per_person': 0}, ignore_index=True)
+
+    gas_leaks = [temp_df.iloc[i]['gas_leaks_per_person'] for i in range(12)]
+
     fig.add_trace(go.Scatter(x=months_str, y=gas_leaks,
                              line=dict(color='black', width=2),
                              mode='lines+markers',
@@ -377,7 +467,6 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown):
     [Input("timeline", "value")],
 )
 def choose_years(choice_years):
-
     df = df[(df.incident_date_time.str[6:10] >= choice_years[0]) &
             (df.incident_date_time.str[6:10] <= choice_years[1])]
     return df'''
@@ -457,10 +546,11 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown, selectedYear):
 @ app.callback(
     Output("mapGraph", "figure"),
     [Input("timeline", "value"),
-     Input("dropdownNta", "value")],
+     Input("dropdownNta", "value"),
+     Input('color_selection', 'children')],
     [State("mapGraph", "figure")],
 )
-def display_map(year, choiceMap, figure):
+def display_map(year, choiceMap, color_selected, figure):
 
     if year != 2019:
         df_selected = df[df.incident_year == year]
@@ -489,7 +579,6 @@ def display_map(year, choiceMap, figure):
     latitude = df_selected["centerLat"]
     longitude = df_selected["centerLong"]
     hover_text = df_selected["hover"]
-    base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/geolayers/"
 
     cm = dict(zip(bins, colorscale))
     data = [
@@ -557,6 +646,19 @@ def display_map(year, choiceMap, figure):
 
             color=cm[bin],
             opacity=DEFAULT_OPACITY,
+            # CHANGE THIS
+            fill=dict(outlinecolor="#afafaf"),
+        )
+        layout["mapbox"]["layers"].append(geo_layer)
+
+    for geoid in color_selected:
+        geo_layer = dict(
+            sourcetype="geojson",
+            source=base2 + str(geoid) + ".geojson",
+            type="fill",
+
+            color='#FF0000',
+            opacity=0.4,
             # CHANGE THIS
             fill=dict(outlinecolor="#afafaf"),
         )
