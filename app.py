@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
+import re
 
 
 import numpy as np
@@ -119,6 +120,8 @@ app.layout = html.Div(
         # Hidden div inside the app that stores the selected areas on the map and passes it into
         # the map callback so those areas are colored
         html.Div(id='color_selection', style={'display': 'none'}),
+        html.Div(id='constraintrange_parcoord', style={'display': 'none'}),
+        html.Div(id='data_selected', style={'display': 'none'}),
 
         # row with the header
         html.Div([
@@ -168,8 +171,7 @@ app.layout = html.Div(
                             'label': i, 'value': i
                         } for i in df.columns[3:] if (i != 'median_houshold_income') & (i != 'gas_leaks_per_person')
                     ],
-                    value=['avg_houshold_size',
-                           'median_age', 'lonely_housholder_over65%'],
+                    value=['avg_houshold_size'],
                     multi=True,
                     placeholder="Select attributes",
                     style={'display': 'inline-block', 'width': '100%'},
@@ -232,14 +234,8 @@ app.layout = html.Div(
         ],
             className='row'),
 
-        # row with parallel coordinates
-        html.Div([
-            dcc.Graph(
-                id='para_coor'
-            )
-        ],
-            className='row'),
-        # row with a map, a timeline by month, and a property use barchart
+
+        # row with a map, a timeline by month, and a Pearson correlation heatmap
         html.Div([
             # map
             html.Div([
@@ -271,15 +267,25 @@ app.layout = html.Div(
             html.Div([
                 html.Div([
                     dcc.Graph(
-                        id='timeline_by_month'
+                        id='pearson_heatmap'
                     )], className='row'),
                 html.Div([
                     dcc.Graph(
-                        id='property_use_barchart'
+                        id='timeline_by_month'
                     )], className='row')
+
             ],
                 className='six columns',
                 style={'display': 'inline-block'})
+        ],
+            className='row'),
+
+
+        # row with parallel coord
+        html.Div([
+            dcc.Graph(
+                id='para_coor'
+            )
         ],
             className='row'),
         # row with the scatterplots
@@ -290,11 +296,10 @@ app.layout = html.Div(
         ],
             className='row'),
 
-
-        # row with pearson coeff heatmap
+        # row with pie chart (property use)
         html.Div([
             dcc.Graph(
-                id='pearson_heatmap'
+                id='property_use_barchart'
             )
         ],
             className='row')
@@ -337,11 +342,13 @@ def activate_input(clicks):
     Output('color_selection', 'children'),
     [
         Input('mapGraph', 'selectedData'),
-        Input('dropdownNta', 'value')
+        Input('dropdownNta', 'value'),
+        Input('constraintrange_parcoord', 'children')
     ])
-def color_selection_on_map(selectedAreaMap, selectedAreaDropdown):
+def color_selection_on_map(selectedAreaMap, selectedAreaDropdown, constraintrange_parcoord):
 
     selected = []
+
     if selectedAreaDropdown is not None:
         if len(selectedAreaDropdown) == 0:
             pass
@@ -353,6 +360,9 @@ def color_selection_on_map(selectedAreaMap, selectedAreaDropdown):
         points = selectedAreaMap["points"]
         selected = np.unique([str(point["text"].split("<br>")[2])
                               for point in points])
+
+    if constraintrange_parcoord and len(constraintrange_parcoord) > 0:
+        selected = constraintrange_parcoord
 
     return selected
 
@@ -460,16 +470,6 @@ def display_selected_data(selectedAreaMap, selectedAreaDropdown):
                       )
     return fig
 
-
-'''
-@ app.callback(
-    Output("data_frame", "data"),
-    [Input("timeline", "value")],
-)
-def choose_years(choice_years):
-    df = df[(df.incident_date_time.str[6:10] >= choice_years[0]) &
-            (df.incident_date_time.str[6:10] <= choice_years[1])]
-    return df'''
 ######################################################################################################################
 # property use barchart callback
 ######################################################################################################################
@@ -657,7 +657,7 @@ def display_map(year, choiceMap, color_selected, figure):
             source=base2 + str(geoid) + ".geojson",
             type="fill",
 
-            color='#FF0000',
+            color='#F74DFF',
             opacity=0.4,
             # CHANGE THIS
             fill=dict(outlinecolor="#afafaf"),
@@ -682,26 +682,53 @@ def reset_dropdown_selected(selectedAreaMap):
     if selectedAreaMap is not None:
         return None
 
-
-'''@app.callback(
-    Output('mapGraph', 'selectedData'),
-    [
-        Input('dropdownNta', 'value')
-    ])
-def reset_map_selected(selectedDropdown):
-    if selectedDropdown is not None:
-        return None
-'''
 ######################################################################################################################
-# parallel coordinates | scattermatrix | pearson coeff heatmap callbacks
+# get constraintrange from parallel coordinates
 ######################################################################################################################
 
+
+@app.callback(
+    Output('constraintrange_parcoord', 'children'),
+    [Input('para_coor', 'restyleData'),
+     Input('para_coor', 'figure'),
+     Input('data_selected', 'children')
+     ]
+)
+def get_selected_parcoord(restyleData, figure, data_selected):
+    ranges = []
+    all_geoids = []
+
+    dff = pd.read_json(data_selected)
+    if restyleData and 'constraintrange' in figure['data'][0]['dimensions'][0].keys():
+        label = figure['data'][0]['dimensions'][0]['label']
+        # list of lists
+        ranges = figure['data'][0]['dimensions'][0]['constraintrange']
+
+        all_geoids = []
+        # select geoids with gas_leaks in the selected intervals
+        if isinstance(ranges[0], list):
+            for range in ranges:
+                selected_dff = dff[dff['gas_leaks_per_person'].between(
+                    range[0], range[1], inclusive=True)]
+                geoids = selected_dff['geoid']
+                all_geoids.extend(geoids)
+        else:
+            selected_dff = dff[dff['gas_leaks_per_person'].between(
+                ranges[0], ranges[1], inclusive=True)]
+            geoids = selected_dff['geoid']
+            all_geoids.extend(geoids)
+    return all_geoids
+
+
+######################################################################################################################
+# parallel coordinates | scattermatrix
+######################################################################################################################
 
 @app.callback(
     [
         Output('scatter_matrix', 'figure'),
         Output('para_coor', 'figure'),
-        Output('pearson_heatmap', 'figure')
+        Output('data_selected', 'children')
     ],
     [Input("timeline", "value"),
         Input('mapGraph', 'selectedData'),
@@ -754,7 +781,7 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
                 label=attr.replace('_', ' '), values=df_selected[attr]) for attr in arr]
 
     para = go.Figure(data=go.Parcoords(line=dict(color=df_selected['gas_leaks_per_person'],
-                                                 colorscale=px.colors.sequential.Blues,
+                                                 colorscale=px.colors.sequential.tempo,
                                                  showscale=True
                                                  ), meta=dict(colorbar=dict(
                                                      title="gas leaks/person"
@@ -804,34 +831,106 @@ def display_selected_data(year, selectedAreaMap, selectedAreaDropdown, selectedA
         'x': 0.5,
         'xanchor': 'center'})
 
-    #######################################################################################################
-    # pearson coeff heatmap
-    l = {}
-    df_heatmap = df_selected.drop(
-        ['Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
-    if year != 2019:
-        df_heatmap = df_heatmap.drop(
-            ['incident_year'], axis=1)
+    return fig, para, df_selected.to_json()
 
-    pearsoncorr = df_heatmap.corr(method='pearson')
-    heatmap = go.Figure(data=go.Heatmap(
-        z=[pearsoncorr[i] for i in pearsoncorr.columns],
-        x=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
-        y=[row.replace('_', ' ').capitalize() for row in pearsoncorr.columns],
-        colorscale='PRGn'
-    ))
+#######################################################################################################
+# pearson coeff heatmap
+
+
+@app.callback(
+    Output('pearson_heatmap', 'figure'),
+    [
+        Input('mapGraph', 'selectedData'),
+        Input('dropdownNta', 'value'),
+        Input('outliers_toggle', 'on'),
+        Input('limit_input_field', 'value')
+    ])
+def display_selected_data(selectedAreaMap, selectedAreaDropdown, hideOutliers, limit):
+
+    df_selected = df
+    df_selected_all = df_all_years
+
+    if hideOutliers:
+        df_selected = df_selected[df_selected['gas_leaks_per_person'] < limit]
+        df_selected_all = df_selected_all[df_selected_all['gas_leaks_per_person'] < limit]
+
+    df_selected = df_selected.merge(centers_df, on='geoid')
+    df_selected = df_selected[df_selected['nta'].str[:6]
+                              != 'park-c']
+
+    df_selected_all = df_selected_all.merge(centers_df, on='geoid')
+    df_selected_all = df_selected_all[df_selected_all['nta'].str[:6]
+                                      != 'park-c']
+    key = 'geoid'
+
+    if selectedAreaDropdown is not None:
+        if len(selectedAreaDropdown) == 0:
+            pass
+        elif 'all' not in selectedAreaDropdown:
+            df_selected = df_selected[df_selected['nta'].isin(
+                selectedAreaDropdown)]
+            df_selected_all = df_selected_all[df_selected_all['nta'].isin(
+                selectedAreaDropdown)]
+    elif selectedAreaMap is not None:
+        points = selectedAreaMap["points"]
+        area_names = [str(point["text"].split("<br>")[2])
+                      for point in points]
+        df_selected = df_selected[df_selected[key].isin(area_names)]
+        df_selected_all = df_selected_all[df_selected_all[key].isin(
+            area_names)]
+
+    df_pearson = df_selected.drop(
+        ['Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
+    df_pearson_all = df_selected_all.drop(
+        ['Unnamed: 0_x', 'geoid', 'Unnamed: 0_y', 'centerLong', 'centerLat'], axis=1)
+
+    pearsoncorr_all = df_pearson_all.corr(method='pearson')
+    pearson_gas_leaks_all = pearsoncorr_all['gas_leaks_per_person']
+
+    attributes = [col.replace('_', ' ').capitalize()
+                  for col in pearsoncorr_all.columns]
+
+    matrix = [[] for _ in range(len(attributes)-1)]
+    years = [year for year in range(2013, 2019)]
+
+    for year in years:
+        df_pearson_year = df_pearson[df_pearson['incident_year'] == year]
+        df_pearson_year = df_pearson_year.drop(columns={'incident_year'})
+        pearsoncorr = df_pearson_year.corr(method='pearson')
+        pearson_gas_leaks = pearsoncorr['gas_leaks_per_person']
+        for i in range(len(attributes)-1):
+            matrix[i].append(pearson_gas_leaks[i+1])
+
+    for i in range(len(attributes)-1):
+        matrix[i].append(pearson_gas_leaks_all[i+1])
+
+    years.append('all')
+
+    heatmap = go.Figure(
+        data=go.Heatmap(
+            z=matrix,
+            x=years,
+            y=attributes[1:],
+            colorscale='RdBu',
+            colorbar=dict(title='Pearson coef.'),
+            xgap=20,
+            zmax=0.8,
+            zmin=-0.8,
+            zmid=0))
+
     heatmap.update_layout(
+        xaxis={'type': 'category'},
         title={
-            'text': '<b>Pearson correlation coefficient, '+title_part+'</b>',
+            'text': '<b>Pearson correlation coefficient by year</b>',
             'y': 0.9,
             'x': 0.5,
             'xanchor': 'center',
             'yanchor': 'top'},
-        height=700,
+        height=500,
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
-        autosize=False)
-    return fig, para, heatmap
+        autosize=True)
+    return heatmap
 
 
 if __name__ == '__main__':
