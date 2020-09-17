@@ -20,7 +20,7 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, meta_tags=[
     {"content": "width=device-width, initial-scale=1.0"}
-], external_stylesheets=external_stylesheets)
+])
 
 
 # mapbox access info
@@ -923,7 +923,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
             'x': 0.5,
             'xanchor': 'center',
             'yanchor': 'top'},
-        height=700,
+        height=500,
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         autosize=True)
