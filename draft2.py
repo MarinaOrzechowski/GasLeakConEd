@@ -94,7 +94,7 @@ BINS = [
     "0.0091-10",
     "park_cemetery"
 ]
-BINS_APS = [
+BINS_ABS = [
     "0-10",
     "11-20",
     "21-30",
