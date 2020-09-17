@@ -62,6 +62,11 @@ months_df = pd.read_csv(
     'C:\\Users\\mskac\\machineLearning\\GasLeakConEd\\data\\processed\\important_(used_in_app)\\Merged_asc_fdny_data_months.csv')
 months_centers_df = months_df.merge(centers_df, on='geoid')
 
+nation_df = pd.read_csv('C:\\Users\\mskac\\machineLearning\\GasLeakConEd\\data\\processed\\important_(used_in_app)\\nationalities_data.csv')
+nation_df_all = pd.read_csv('C:\\Users\\mskac\\machineLearning\\GasLeakConEd\\data\\processed\\important_(used_in_app)\\nationalities_data_all.csv')
+for column in nation_df.columns:
+    nation_df[column] = pd.to_numeric(nation_df[column])
+    nation_df_all[column] = pd.to_numeric(nation_df_all[column])
 
 df_all_years = pd.read_csv(
     'C:\\Users\\mskac\\machineLearning\\GasLeakConEd\\data\\processed\\important_(used_in_app)\\Merged_asc_fdny_data_all_years.csv')
@@ -94,7 +99,7 @@ BINS = [
     "0.0091-10",
     "park_cemetery"
 ]
-BINS_APS = [
+BINS_ABS = [
     "0-10",
     "11-20",
     "21-30",
@@ -324,6 +329,14 @@ app.layout = html.Div(
         html.Div([
             dcc.Graph(
                 id='scatter_matrix'
+            )
+        ],
+            className='row'),
+        
+        # row9 with the heatmap (nationalities)
+        html.Div([
+            dcc.Graph(
+                id='pearson_heatmap_nation'
             )
         ],
             className='row'),
@@ -707,19 +720,19 @@ def build_parallel_coord(filtered_geoids, selected_attr, year, toggle, limit, ab
     else:
         temp_title = "<b>Comparison of Gas Leaks to Other Attributes" + year_title
     
-    show_legend = True
+    # show_legend = True
     for i in range(len(selected_attr)):
 
         for ind, b in enumerate(filtered_data['boro'].unique()):
             temp = filtered_data[filtered_data['boro'] == b]
-            if i > 0:
-                show_legend = False
+            # if i > 0:
+            #     show_legend = False
             fig.add_trace(
                 go.Scatter(y=temp[abs_rel],
                            x=temp[selected_attr[i]],
                            mode='markers',
                            marker_color=f"rgba{(*hex_to_rgb(colorscale_by_boro[ind]), 0.6)}",
-                           showlegend=show_legend,
+                           showlegend=True,
                            name=b,
                            text=temp['hover']),
 
@@ -744,7 +757,10 @@ def build_parallel_coord(filtered_geoids, selected_attr, year, toggle, limit, ab
 
 # update pearson corr. coeff. heatmap based on selected location and outliers
 @app.callback(
-    Output('pearson_heatmap', 'figure'),
+    [
+        Output('pearson_heatmap', 'figure'),
+        Output('pearson_heatmap_nation', 'figure')
+    ],
     [
         Input('selected_geoids', 'children'),
         Input('outliers_toggle', 'on'),
@@ -755,10 +771,14 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
 
     df_selected = df
     df_selected_all = df_all_years
+    df_nation = nation_df
+    df_nation_all = nation_df_all
 
     if hideOutliers:
         df_selected = df_selected[df_selected['gas_leaks_per_person'] < limit]
         df_selected_all = df_selected_all[df_selected_all['gas_leaks_per_person'] < limit]
+        df_nation = df_nation[df_nation['gas_leaks_per_person'] < limit]
+        df_nation_all = df_nation_all[df_nation_all['gas_leaks_per_person']< limit]
         
 
     df_selected = df_selected[df_selected['nta'].str[:6] != 'park-c']
@@ -767,6 +787,8 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     if len(selected_geoids)>0:
         df_selected = df_selected[df_selected['geoid'].isin(selected_geoids)]
         df_selected_all = df_selected_all[df_selected_all['geoid'].isin(selected_geoids)]
+        df_nation = df_nation[df_nation['geoid'].isin(selected_geoids)]
+        df_nation_all = df_nation_all[df_nation_all['geoid'].isin(selected_geoids)]
 
     if abs_rel == 'gas_leaks':
         skip = 'gas_leaks_per_person'
@@ -777,11 +799,56 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
         ['geoid',  'centerLong', 'centerLat', 'total_housing_units',skip, 'area','boro', 'nta', 'hover'], axis=1)
     df_pearson_all = df_selected_all.drop(
         ['geoid', 'centerLong', 'centerLat','total_housing_units', skip, 'area','boro', 'nta', 'hover'], axis=1)
+    
+    
+    df_nation['gas_leaks_per_person'] = df_nation['gas_leaks']/df_nation['total_population']
+    df_nation_all['gas_leaks_per_person'] = df_nation_all['gas_leaks']/df_nation_all['total_population']
+    
 
-    columns = [column for column in df_pearson.columns if column not in [ 'gas_leaks','gas_leaks_per_person', 'incident_year']]
-    columns.insert(0, abs_rel)
+
+    df_pearson_nation = df_nation.drop(
+        ['geoid', 'Unnamed: 0', skip], axis=1)
+    df_pearson_nation_all = df_nation_all.drop(['geoid', 'Unnamed: 0', skip], axis=1)
+
+    for column in df_pearson_nation.columns[:-3]:
+        df_pearson_nation[column] = df_pearson_nation[column]/df_pearson_nation['total_population']
+    for column in df_pearson_nation_all.columns[:-3]:
+        df_pearson_nation_all[column] = df_pearson_nation_all[column]/df_pearson_nation_all['total_population']
+    
+
+    df_pearson_nation = df_pearson_nation.drop(['total_population'], axis=1)
+    df_pearson_nation_all = df_pearson_nation_all.drop(['total_population'], axis=1)
+
+    columns_nation = [column for column in df_pearson_nation.columns if column not in [ 'gas_leaks','gas_leaks_per_person']]
+    columns_nation.insert(0, abs_rel)
+    df_pearson_nation = df_pearson_nation[columns_nation]
+    columns_nation.remove('incident_year')
+    df_pearson_nation_all = df_pearson_nation_all[columns_nation]
+
+    pearsoncorr_nation_all = df_pearson_nation_all.corr(method='pearson')
+    pearson_nation_gas_leaks_all = pearsoncorr_nation_all[abs_rel]
+    attributes_nation = [col for col in pearsoncorr_nation_all.columns if (col != 'gas_leaks_per_person' and col!= 'gas_leaks')]
+    matrix_nation = [[] for _ in range(len(attributes_nation))]
+    years = [year for year in range(2013, 2019)]
+
+    for year in years:
+        df_pearson_nation_year = df_pearson_nation[df_pearson_nation['incident_year'] == year]
+        df_pearson_nation_year = df_pearson_nation_year.drop(columns={'incident_year'})
+        pearsoncorr_nation = df_pearson_nation_year.corr(method='pearson')
+        pearson_nation_gas_leaks = pearsoncorr_nation[abs_rel]
+        for i in range(len(attributes_nation)):
+            matrix_nation[i].append(pearson_nation_gas_leaks[i+1])
+    for i in range(len(attributes_nation)):
+        matrix_nation[i].append(pearson_nation_gas_leaks_all[i+1])
+
+    years.append('all')
+
+    pearson_nation_df = pd.DataFrame(matrix_nation, columns=years, index=attributes_nation)
+    sorted_pearson_nation_df = pearson_nation_df.sort_values(by=['all'], ascending = 'False')
 
     #### working, but confusing, has to be fix
+    columns = [column for column in df_pearson.columns if column not in [ 'gas_leaks','gas_leaks_per_person', 'incident_year']]
+    columns.insert(0, abs_rel)
     df_pearson_all = df_pearson_all[columns]
     columns.append('incident_year')
     df_pearson = df_pearson[columns]
@@ -795,7 +862,6 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
 
     matrix = [[] for _ in range(len(attributes))]
     years = [year for year in range(2013, 2019)]
-
     for year in years:
         df_pearson_year = df_pearson[df_pearson['incident_year'] == year]
         df_pearson_year = df_pearson_year.drop(columns={'incident_year'})
@@ -807,7 +873,6 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
         matrix[i].append(pearson_gas_leaks_all[i+1])
 
     years.append('all')
-
     pearson_df = pd.DataFrame(matrix, columns=years, index=attributes)
     sorted_pearson_df = pearson_df.sort_values(by=['all'], ascending = 'False')
 
@@ -836,7 +901,33 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         autosize=True)
-    return heatmap
+
+    heatmap_nation = go.Figure(
+        data=go.Heatmap(
+            z=sorted_pearson_nation_df,
+            x=years,
+            #y=attributes[1:],
+            y=sorted_pearson_nation_df.index.values.tolist() ,
+            colorscale='RdBu',
+            colorbar=dict(title='Pearson coef.'),
+            xgap=20,
+            zmax=0.8,
+            zmin=-0.8,
+            zmid=0))
+
+    heatmap_nation.update_layout(
+        xaxis={'type': 'category'},
+        title={
+            'text': '<b>Pearson correlation coefficient by year ('+ abs_rel.replace('_', ' ').capitalize() + ')</b>',
+            'y': 0.9,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'},
+        height=700,
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        autosize=True)
+    return heatmap, heatmap_nation
 
 
 # update monthly representation of #gas_leaks/person based on selected locations and outliers limits
