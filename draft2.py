@@ -282,11 +282,14 @@ app.layout = html.Div(
                     dcc.Graph(
                         id='pearson_heatmap'
                     )], className='row'),
-                # row5: timeline of gas leaks per person
+
+                    # row9 with the heatmap (nationalities)
                 html.Div([
                     dcc.Graph(
-                        id='timeline_by_month'
-                    )], className='row')
+                        id='pearson_heatmap_nation'
+                    )
+                ],
+                className='row')
 
             ],
                 className='six columns',
@@ -301,6 +304,12 @@ app.layout = html.Div(
             )
         ],
             className='row'),
+
+        # row5: timeline of gas leaks per person
+                html.Div([
+                    dcc.Graph(
+                        id='timeline_by_month'
+                    )], className='row'),
 
         # row7: dropdown to choose attributes
         html.Div([
@@ -331,15 +340,9 @@ app.layout = html.Div(
                 id='scatter_matrix'
             )
         ],
-            className='row'),
+            className='row')
         
-        # row9 with the heatmap (nationalities)
-        html.Div([
-            dcc.Graph(
-                id='pearson_heatmap_nation'
-            )
-        ],
-            className='row'),
+        
     ],
         style={'backgroundColor': colors['background']})
 )
@@ -446,7 +449,6 @@ def selected_areas(selected_map, selected_dd, selected_scatter):
         Input('timeline', 'value'),
         Input('outliers_toggle', 'on'),
         Input('limit_outliers_field', 'value')
-
     ]
 )
 
@@ -498,7 +500,6 @@ def get_selected_parcoord(restyleData, figure, geoids, year, toggle, limit):
 # update map depending on chosen year;
 # red color areas selected on par.coord/scatterplot/dropdown/map
 @app.callback(
-
     Output("map_graph", "figure"),
     [
         Input("timeline", "value"),
@@ -910,7 +911,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
             y=sorted_pearson_nation_df.index.values.tolist() ,
             colorscale='RdBu',
             colorbar=dict(title='Pearson coef.'),
-            xgap=20,
+            xgap=10,
             zmax=0.8,
             zmin=-0.8,
             zmid=0))
@@ -924,6 +925,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
             'xanchor': 'center',
             'yanchor': 'top'},
         height=500,
+        width = 800,
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         autosize=True)
@@ -967,7 +969,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     if abs_rel == 'gas_leaks_per_person':
         temp = "<b># Gas Leaks per Person (Monthly, for a Given Area)</b>"
         temp2 = ' (10<sup>-3</sup> gl/p)'
-        power = 1000
+        power = 700
     else:
         temp = "<b># Gas Leaks (Monthly, for a Given Area)</b>"
         power = 1
