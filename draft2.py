@@ -7,10 +7,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
 import re
-
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 import numpy as np
 import pandas as pd
+import geopandas as gpd
+
 
 
 # prevent triggering of pandas chained assignment warning
@@ -38,48 +41,48 @@ base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timelin
 base2 = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/ct_geolayers/"
 
 
-df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data.csv')
-# df = pd.read_csv(
-#     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data.csv')
-
+df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\combined_data_311_gentr_forvis.csv')
 df = df.dropna()
 columns_original = df.columns
 for column in columns_original:
     df[column] = pd.to_numeric(df[column])
-
-
 
 centers_df = pd.read_csv(
     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/geoid_with_centers.csv')
 
 df = df.merge(centers_df, on='geoid')
 df['hover'] = df['hover']+'<br>#Gas leaks per person: ' + \
-    df['gas_leaks_per_person'].round(6).astype(str)+'<br>Avg. bldg age: ' + \
-    df['avg_bldg_age'].round(5).astype(str)
+    df['gas_leaks_pp'].round(6).astype(str)+'<br>Gentrified: ' + \
+    df['gentrified'].astype(int).astype(str)
 
 df = df.drop(['Unnamed: 0_x','Unnamed: 0_y'], axis = 1)
 
 
-months_df = pd.read_csv(
-    'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
+months_df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_months.csv')
 months_centers_df = months_df.merge(centers_df, on='geoid')
 
-nation_df = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/nationalities_data.csv')
-nation_df_all = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/nationalities_data_all.csv')
+nation_df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\nationalities_data.csv')
+nation_df_all = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\nationalities_data_all.csv')
 for column in nation_df.columns:
     nation_df[column] = pd.to_numeric(nation_df[column])
     nation_df_all[column] = pd.to_numeric(nation_df_all[column])
 
-df_all_years = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_all_years.csv')
-# df_all_years = pd.read_csv(
-#     'https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_all_years.csv')
-df_all_years = df_all_years.dropna()
-df_all_years = df_all_years.merge(centers_df, on='geoid')
+df_combined_years= pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\ready_for_PCA.csv')
+df_combined_years = df_combined_years.dropna().reset_index()
+
+df_all_years = df_combined_years.merge(centers_df, on='geoid')
 df_all_years = df_all_years.drop(['Unnamed: 0_x','Unnamed: 0_y'], axis = 1)
 df_all_years['hover'] = df_all_years['hover']+'<br>#Gas leaks per person: ' + \
-    df_all_years['gas_leaks_per_person'].round(6).astype(str)+'<br>Avg. bldg age: ' + \
+    df_all_years['gas_leaks_pp'].round(6).astype(str)+'<br>Avg. bldg age: ' + \
     df_all_years['avg_bldg_age'].round(5).astype(str)
 
+#############################################################################################
+# temp PCA data
+#############################################################################################
+
+features = list(set(df_combined_years.columns) - set(['gas_leaks_pp', 'Unnamed: 0', 'index', 'gas_leaks']))
+pca_df = df_combined_years
+PCA_df = df_combined_years[features]
 
 
 # dictionary where keys are ntas and values are lists of geoids in each of the ntas
@@ -186,10 +189,10 @@ app.layout = html.Div(
                 dcc.RadioItems(
                     id = 'radio_btn',
                     options=[
-                        {'label': 'Gas Leaks per Person', 'value': 'gas_leaks_per_person'},
+                        {'label': 'Gas Leaks per Person', 'value': 'gas_leaks_pp'},
                         {'label': 'Gas Leaks (count)', 'value': 'gas_leaks'}
                     ],
-                    value='gas_leaks_per_person',
+                    value='gas_leaks_pp',
                     labelStyle={'display': 'inline-block', 'margin-left':'10px'}
                 )
             ],
@@ -280,26 +283,43 @@ app.layout = html.Div(
                 style={'display': 'inline-block'}),
 
             html.Div([
-                # row5: pearson coeff. heatmap
-                html.Div([
-                    dcc.Graph(
-                        id='pearson_heatmap'
-                    )], className='row'),
+                ################################
+                dcc.Tabs([
+                    dcc.Tab(label='Correlation heatmaps', children=[
+                        dcc.Graph(
+                            id='pearson_heatmap'),
+                        dcc.Graph(
+                            id='pearson_heatmap_nation'
+                    )]),
+                    dcc.Tab(label='Additional Maps', 
+                        style={'backgroundColor': colors['background']}, 
+                        children=[
+                            dcc.Dropdown(
+                                id="add_map_attr",
+                                options=[
+                                    {
+                                        'label': i.replace('_', ' ').capitalize(), 'value': i
+                                    } for i in columns_original if i not in ['gas_leaks','gas_leaks_pp','geoid', 'incident_year','Unnamed: 0']
+                                ],
+                                value='gentrified',
+                                multi=False,
+                                # placeholder="Select attributes",
+                                style={'display': 'inline-block', 'width': '100%'}
+                            ),
+                            dcc.Graph(
 
-                    # row9 with the heatmap (nationalities)
-                html.Div([
-                    dcc.Graph(
-                        id='pearson_heatmap_nation'
-                    )
-                ],
-                className='row')
+                                id = 'additional_map')
+                            
+                    ])                    
+
+                    ], colors={'background': colors['background']}),
 
             ],
                 className='six columns',
                 style={'display': 'inline-block'})
         ],
             className='row'),
-
+####################################################################################
         # row6 with parallel coord
         html.Div([
             dcc.Graph(
@@ -324,9 +344,9 @@ app.layout = html.Div(
                         options=[
                             {
                                 'label': i.replace('_', ' ').capitalize(), 'value': i
-                            } for i in columns_original if i not in ['gas_leaks','gas_leaks_per_person','geoid', 'incident_year','Unnamed: 0']
+                            } for i in columns_original if i not in ['gas_leaks','gas_leaks_pp','geoid', 'incident_year','Unnamed: 0']
                         ],
-                        value=['lonely_housholder%', '311compl_per_person'],
+                        value=['lonely_housholder%', '311total_compl_pp'],
                         multi=True,
                         placeholder="Select attributes",
                         style={'display': 'inline-block', 'width': '100%'}
@@ -343,7 +363,17 @@ app.layout = html.Div(
                 id='scatter_matrix'
             )
         ],
-            className='row')
+            className='row'),
+        
+        # row 9 with PCA
+        html.Div([
+            dcc.Graph(id="pca"),
+            html.P("Number of components:"),
+            dcc.Slider(
+                id='pca_slider',
+                min=2, max=5, value=2,
+                marks={i: str(i) for i in range(2,6)})
+        ])
 
 
     ],
@@ -361,6 +391,90 @@ def hex_to_rgb(hex_color: str) -> tuple:
 ####################################################################################
 # callbacks
 ####################################################################################
+
+# pca
+@app.callback(
+    Output("pca", "figure"), 
+    [Input("pca_slider", "value"),
+     Input("selected_geoids", "children")])
+def run_and_plot(n_components, filtered_geoids):
+    PCA_df_filt = PCA_df
+    pca_df_color = pca_df
+
+    if len(filtered_geoids)>0:
+        PCA_df_filt = PCA_df[PCA_df['geoid'].isin(filtered_geoids)]
+        pca_df_color = pca_df[pca_df['geoid'].isin(filtered_geoids)]
+    
+
+    PCA_df_filt = PCA_df_filt.drop(columns={'geoid'})
+    scaler = StandardScaler()
+    scaler.fit(PCA_df_filt)
+    scaled_data = scaler.transform(PCA_df_filt)
+    pca = PCA(n_components=n_components)
+    components = pca.fit_transform(scaled_data)
+    print('PCA Explained variance ratio: ',pca.explained_variance_ratio_)
+    var = pca.explained_variance_ratio_.sum() * 100
+
+    labels = {str(i): f"PC {i+1}" 
+              for i in range(n_components)}
+    labels['color'] = 'Gas leaks per person'
+
+    fig = px.scatter_matrix(
+        components,
+        color=pca_df_color['gas_leaks_pp'],
+        dimensions=range(n_components),
+        labels=labels,
+        title="Total Explained Variance: {}% and PCA explained variance ratio: {}".format(round(var,2), pca.explained_variance_ratio_),
+        height = 800,
+        size=[1]*len(PCA_df_filt), size_max=5,
+        range_color=[0, 0.02])
+    fig.update_traces(diagonal_visible=False)
+    return fig
+
+
+@app.callback(
+    Output('additional_map', 'figure'),
+    [
+        Input('timeline', 'value'),
+        Input('add_map_attr', 'value')
+    ]
+)
+def add_map(year, attr):
+    if  isinstance(attr, list):
+        attr = attr[0]
+    if year != 2019:
+        filtered_data = df[df['incident_year']==year]
+    else:
+        filtered_data = df_all_years
+
+    filtered_data['geoid'] = filtered_data['geoid'].astype(str)
+    geojson = pd.read_json(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\CT_shapes_with_geoids.geojson')
+    geo_df = gpd.GeoDataFrame.from_features(
+        geojson["features"]
+    ).merge(filtered_data, on='geoid').set_index("geoid")
+
+    fig = px.choropleth(geo_df,
+                        geojson=geo_df.geometry,
+                        locations=geo_df.index,
+                        color=attr,
+                        projection="mercator",
+                        hover_data = ['nta', 'gentrified', attr],
+                        width = 800,
+                        height = 800,
+                        range_color = [filtered_data[attr].min(), np.percentile(filtered_data[attr],95)],
+                        color_continuous_scale = 'Blues'
+                        )
+    fig.update_layout(
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        geo=dict(bgcolor= colors['background'])
+
+    )
+    fig.update_geos(fitbounds="locations", visible=False)
+    return fig
+
+
+
 
 
 # if year is selected or a reset btn was pressed, reset dropdown
@@ -465,7 +579,7 @@ def get_selected_parcoord(restyleData, figure, geoids, year, toggle, limit):
         dff = df_all_years
 
     if toggle:
-        dff = dff[dff['gas_leaks_per_person'] < limit]
+        dff = dff[dff['gas_leaks_pp'] < limit]
 
     if len(geoids)>0:
         dff = dff[dff['geoid'].isin(geoids)]
@@ -658,14 +772,14 @@ def build_parallel_coord(filtered_geoids, year, toggle, limit):
     else:
         filtered_data = df_all_years
     if toggle:
-        filtered_data = filtered_data[filtered_data['gas_leaks_per_person'] < limit]
+        filtered_data = filtered_data[filtered_data['gas_leaks_pp'] < limit]
 
     if len(filtered_geoids)>0:
         filtered_data = filtered_data[filtered_data['geoid'].isin(filtered_geoids)]
     # array of attributes
-    arr1 = [str(r) for r in columns_original if r not in ['gas_leaks','gas_leaks_per_person','geoid', 'incident_year','Unnamed: 0']]
+    arr1 = [str(r) for r in columns_original if r not in ['gas_leaks','gas_leaks_pp','geoid', 'incident_year','Unnamed: 0'] and not str(r).startswith('%311')]
     arr1 = sorted(arr1)
-    arr = ['gas_leaks_per_person', 'gas_leaks']
+    arr = ['gas_leaks_pp', 'gas_leaks']
     arr.extend(arr1)
 
     dim = [dict(range=[filtered_data[attr].min(), filtered_data[attr].max()],
@@ -673,13 +787,13 @@ def build_parallel_coord(filtered_geoids, year, toggle, limit):
 
     fig = go.Figure(data=go.Parcoords(
         line=dict(
-            color=filtered_data['gas_leaks_per_person'],
+            color=filtered_data['gas_leaks_pp'],
             colorscale=px.colors.sequential.tempo,
             showscale=True
             ),
         meta=dict(colorbar=dict(title="gas leaks/person")),
         dimensions=dim,
-        labelangle=10))
+        labelangle=15))
 
     fig.update_layout(
         height=500,
@@ -711,7 +825,7 @@ def build_parallel_coord(filtered_geoids, selected_attr, year, toggle, limit, ab
         year_title = '2013-2018'
 
     if toggle:
-        filtered_data = filtered_data[filtered_data['gas_leaks_per_person'] < limit]
+        filtered_data = filtered_data[filtered_data['gas_leaks_pp'] < limit]
 
 
     fig = make_subplots(rows=len(selected_attr), cols=1, subplot_titles=[
@@ -719,7 +833,7 @@ def build_parallel_coord(filtered_geoids, selected_attr, year, toggle, limit, ab
 
     if len(filtered_geoids)>0:
         filtered_data = filtered_data[filtered_data['geoid'].isin(filtered_geoids)]
-    if abs_rel == 'gas_leaks_per_person':
+    if abs_rel == 'gas_leaks_pp':
         temp_title = "<b>Comparison of Gas Leak#/person to Other Attributes" + year_title
     else:
         temp_title = "<b>Comparison of Gas Leaks to Other Attributes" + year_title
@@ -779,10 +893,10 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     df_nation_all = nation_df_all
 
     if hideOutliers:
-        df_selected = df_selected[df_selected['gas_leaks_per_person'] < limit]
-        df_selected_all = df_selected_all[df_selected_all['gas_leaks_per_person'] < limit]
-        df_nation = df_nation[df_nation['gas_leaks_per_person'] < limit]
-        df_nation_all = df_nation_all[df_nation_all['gas_leaks_per_person']< limit]
+        df_selected = df_selected[df_selected['gas_leaks_pp'] < limit]
+        df_selected_all = df_selected_all[df_selected_all['gas_leaks_pp'] < limit]
+        df_nation = df_nation[df_nation['gas_leaks_pp'] < limit]
+        df_nation_all = df_nation_all[df_nation_all['gas_leaks_pp']< limit]
 
 
     df_selected = df_selected[df_selected['nta'].str[:6] != 'park-c']
@@ -795,18 +909,17 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
         df_nation_all = df_nation_all[df_nation_all['geoid'].isin(selected_geoids)]
 
     if abs_rel == 'gas_leaks':
-        skip = 'gas_leaks_per_person'
+        skip = 'gas_leaks_pp'
     else:
         skip = 'gas_leaks'
 
     df_pearson = df_selected.drop(
-        ['geoid',  'centerLong', 'centerLat', 'total_housing_units',skip, 'area','boro', 'nta', 'hover'], axis=1)
+        ['geoid',  'centerLong', 'centerLat',skip, 'area','boro', 'nta', 'hover'], axis=1)
     df_pearson_all = df_selected_all.drop(
-        ['geoid', 'centerLong', 'centerLat','total_housing_units', skip, 'area','boro', 'nta', 'hover'], axis=1)
+        ['geoid', 'centerLong', 'centerLat', skip, 'area','boro', 'nta', 'hover'], axis=1)
 
-
-    df_nation['gas_leaks_per_person'] = df_nation['gas_leaks']/df_nation['total_population']
-    df_nation_all['gas_leaks_per_person'] = df_nation_all['gas_leaks']/df_nation_all['total_population']
+    df_nation['gas_leaks_pp'] = df_nation['gas_leaks']/df_nation['total_population']
+    df_nation_all['gas_leaks_pp'] = df_nation_all['gas_leaks']/df_nation_all['total_population']
 
 
 
@@ -823,7 +936,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     df_pearson_nation = df_pearson_nation.drop(['total_population'], axis=1)
     df_pearson_nation_all = df_pearson_nation_all.drop(['total_population'], axis=1)
 
-    columns_nation = [column for column in df_pearson_nation.columns if column not in [ 'gas_leaks','gas_leaks_per_person']]
+    columns_nation = [column for column in df_pearson_nation.columns if column not in [ 'gas_leaks','gas_leaks_pp']]
     columns_nation.insert(0, abs_rel)
     df_pearson_nation = df_pearson_nation[columns_nation]
     columns_nation.remove('incident_year')
@@ -831,7 +944,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
 
     pearsoncorr_nation_all = df_pearson_nation_all.corr(method='pearson')
     pearson_nation_gas_leaks_all = pearsoncorr_nation_all[abs_rel]
-    attributes_nation = [col for col in pearsoncorr_nation_all.columns if (col != 'gas_leaks_per_person' and col!= 'gas_leaks')]
+    attributes_nation = [col for col in pearsoncorr_nation_all.columns if (col != 'gas_leaks_pp' and col!= 'gas_leaks')]
     matrix_nation = [[] for _ in range(len(attributes_nation))]
     years = [year for year in range(2013, 2019)]
 
@@ -851,8 +964,9 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     sorted_pearson_nation_df = pearson_nation_df.sort_values(by=['all'], ascending = 'False')
 
     #### working, but confusing, has to be fix
-    columns = [column for column in df_pearson.columns if column not in [ 'gas_leaks','gas_leaks_per_person', 'incident_year']]
+    columns = [column for column in df_pearson.columns if column not in [ 'gas_leaks','gas_leaks_pp', 'incident_year']]
     columns.insert(0, abs_rel)
+
     df_pearson_all = df_pearson_all[columns]
     columns.append('incident_year')
     df_pearson = df_pearson[columns]
@@ -861,7 +975,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     pearson_gas_leaks_all = pearsoncorr_all[abs_rel]
 
     attributes = [col.replace('_', ' ').capitalize()
-                  for col in pearsoncorr_all.columns if (col != 'gas_leaks_per_person' and col!= 'gas_leaks')]
+                  for col in pearsoncorr_all.columns if (col != 'gas_leaks_pp' and col!= 'gas_leaks')]
 
 
     matrix = [[] for _ in range(len(attributes))]
@@ -952,24 +1066,24 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
 
 
     if hideOutliers:
-        df_selected = months_data[months_data['gas_leaks_per_person'] < limit]
+        df_selected = months_data[months_data['gas_leaks_pp'] < limit]
     else:
         df_selected = months_data
 
     df_selected = df_selected[df_selected['nta'].str[:6] != 'park-c']
     df_selected = df_selected.groupby(['incident_year', 'incident_month', 'geoid']).agg(
         {'gas_leaks': 'sum', 'total_population': 'sum'}).reset_index()
-    df_selected['gas_leaks_per_person'] = df_selected['gas_leaks']/df_selected['total_population']
+    df_selected['gas_leaks_pp'] = df_selected['gas_leaks']/df_selected['total_population']
 
     # some of the values are inf, as we divide by population, and population is 0 in some areas (like parks)
-    df_selected = df_selected[df_selected['gas_leaks_per_person'] < 1]
+    df_selected = df_selected[df_selected['gas_leaks_pp'] < 1]
 
     fig = go.Figure()
     months = [month for month in range(1, 13)]
     months_str = ['Jan', 'Feb', 'Mar', 'Apr', "May",
                   'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    if abs_rel == 'gas_leaks_per_person':
+    if abs_rel == 'gas_leaks_pp':
         temp = "<b># Gas Leaks per Person (Monthly, for a Given Area)</b>"
         temp2 = ' (10<sup>-3</sup> gl/p)'
         power = 700
@@ -983,7 +1097,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
 
         df_year = df_selected[df_selected['incident_year'] == year].groupby(['incident_month']).agg(
             {'gas_leaks': 'sum', 'total_population': 'sum'}).reset_index()
-        df_year['gas_leaks_per_person'] = df_year['gas_leaks']/df_year['total_population']*power # avoid tiny numbers and mu
+        df_year['gas_leaks_pp'] = df_year['gas_leaks']/df_year['total_population']*power # avoid tiny numbers and mu
 
         # some areas had no gas leaks during some months, so fill it with zeros
         for i in range(12):
@@ -1002,7 +1116,7 @@ def display_selected_data(selected_geoids, hideOutliers, limit, abs_rel):
     # add monthly gas_leaks_per_person consolidated for all years 2013-2017 - trend. (2018 doesn't have information about all months)
     temp_df = df_selected.groupby(['incident_month']).agg(
         {'gas_leaks': 'sum', 'total_population': 'sum'}).reset_index()
-    temp_df['gas_leaks_per_person'] = temp_df['gas_leaks']/temp_df['total_population']*power # avoid tiny numbers and mu
+    temp_df['gas_leaks_pp'] = temp_df['gas_leaks']/temp_df['total_population']*power # avoid tiny numbers and mu
 
     # some areas had no gas leaks during some months, so fill it with zeros
     for i in range(12):
