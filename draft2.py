@@ -41,7 +41,7 @@ base = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timelin
 base2 = "https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/ct_geolayers/"
 
 
-df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\combined_data_311_gentr_forvis.csv')
+df = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/combined_data_311_gentr_forvis.csv')
 df = df.dropna()
 columns_original = df.columns
 for column in columns_original:
@@ -58,16 +58,16 @@ df['hover'] = df['hover']+'<br>#Gas leaks per person: ' + \
 df = df.drop(['Unnamed: 0_x','Unnamed: 0_y'], axis = 1)
 
 
-months_df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\Merged_asc_fdny_data_months.csv')
+months_df = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/Merged_asc_fdny_data_months.csv')
 months_centers_df = months_df.merge(centers_df, on='geoid')
 
-nation_df = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\nationalities_data.csv')
-nation_df_all = pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\nationalities_data_all.csv')
+nation_df = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/nationalities_data.csv')
+nation_df_all = pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/nationalities_data_all.csv')
 for column in nation_df.columns:
     nation_df[column] = pd.to_numeric(nation_df[column])
     nation_df_all[column] = pd.to_numeric(nation_df_all[column])
 
-df_combined_years= pd.read_csv(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\important_(used_in_app)\ready_for_PCA.csv')
+df_combined_years= pd.read_csv('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/important_(used_in_app)/ready_for_PCA.csv')
 df_combined_years = df_combined_years.dropna().reset_index()
 
 df_all_years = df_combined_years.merge(centers_df, on='geoid')
