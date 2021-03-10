@@ -366,13 +366,24 @@ app.layout = html.Div(
             className='row'),
         
         # row 9 with PCA
+        # row1 with the header
+        html.Div([
+            html.H3(
+                children='PCA Visualization',
+                 className='eleven columns')
+        ], style={
+            'textAlign': 'center',
+            'color': colors['text']
+        }, className='row'),
+
         html.Div([
             dcc.Graph(id="pca"),
             html.P("Number of components:"),
             dcc.Slider(
                 id='pca_slider',
                 min=2, max=5, value=2,
-                marks={i: str(i) for i in range(2,6)})
+                marks={i: str(i) for i in range(2,6)}),
+            # dcc.Graph(id="pca_test")
         ])
 
 
@@ -391,6 +402,46 @@ def hex_to_rgb(hex_color: str) -> tuple:
 ####################################################################################
 # callbacks
 ####################################################################################
+
+# PCA TEST
+# pca
+# @app.callback(
+#     Output("pca_test", "figure"), 
+#     [Input("pca_slider", "value"),
+#      Input("selected_geoids", "children")])
+# def run_and_plot(n_components, filtered_geoids):
+#     PCA_df_filt = PCA_df
+#     pca_df_color = pca_df
+
+#     if len(filtered_geoids)>0:
+#         PCA_df_filt = PCA_df[PCA_df['geoid'].isin(filtered_geoids)]
+#         pca_df_color = pca_df[pca_df['geoid'].isin(filtered_geoids)]
+    
+
+#     PCA_df_filt = PCA_df_filt.drop(columns={'geoid'})
+#     scaler = StandardScaler()
+#     scaler.fit(PCA_df_filt)
+#     scaled_data = scaler.transform(PCA_df_filt)
+#     pca = PCA(n_components=n_components)
+#     components = pca.fit_transform(scaled_data)
+#     var = pca.explained_variance_ratio_.sum() * 100
+
+#     labels = {str(i): f"PC {i+1}" 
+#               for i in range(n_components)}
+#     labels['color'] = 'Gas leaks per person'
+#     index_vals = components
+
+#     fig = go.Figure(
+#         data = go.Splom(
+#             dimensions = [],
+#             diagonal_visible = False,
+#             text = df['gas_leaks_pp'],
+#             marker = dict(color = index_vals,
+#                      line_color = 'white',
+#                      line_width = 0.5)
+#         )
+#     )
+#     return fig
 
 # pca
 @app.callback(
@@ -412,7 +463,7 @@ def run_and_plot(n_components, filtered_geoids):
     scaled_data = scaler.transform(PCA_df_filt)
     pca = PCA(n_components=n_components)
     components = pca.fit_transform(scaled_data)
-    print('PCA Explained variance ratio: ',pca.explained_variance_ratio_)
+    print(components)
     var = pca.explained_variance_ratio_.sum() * 100
 
     labels = {str(i): f"PC {i+1}" 
@@ -426,9 +477,15 @@ def run_and_plot(n_components, filtered_geoids):
         labels=labels,
         title="Total Explained Variance: {}% and PCA explained variance ratio: {}".format(round(var,2), pca.explained_variance_ratio_),
         height = 800,
-        size=[1]*len(PCA_df_filt), size_max=5,
+        size=[1]*len(PCA_df_filt), size_max=4.5,
+        opacity = 0.5,
         range_color=[0, 0.02])
     fig.update_traces(diagonal_visible=False)
+    fig.update_layout(
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background']
+
+    )
     return fig
 
 
@@ -448,7 +505,8 @@ def add_map(year, attr):
         filtered_data = df_all_years
 
     filtered_data['geoid'] = filtered_data['geoid'].astype(str)
-    geojson = pd.read_json(r'C:\Users\mskac\machineLearning\GasLeakConEd\data\processed\CT_shapes_with_geoids.geojson')
+
+    geojson = pd.read_json('https://raw.githubusercontent.com/MarinaOrzechowski/GasLeakConEd/timeline_branch/data/processed/CT_shapes_with_geoids.geojson')
     geo_df = gpd.GeoDataFrame.from_features(
         geojson["features"]
     ).merge(filtered_data, on='geoid').set_index("geoid")
